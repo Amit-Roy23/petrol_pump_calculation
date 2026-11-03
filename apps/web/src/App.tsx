@@ -1,146 +1,155 @@
-import React, { useState } from 'react';
-import { Fuel, RefreshCw, CheckCircle2, TrendingUp, AlertTriangle } from 'lucide-react';
+import { lazy, Suspense, useEffect } from 'react';
+import { HashRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { BarChart3, Gauge, HandCoins, Home, Settings as SettingsIcon, Wallet } from 'lucide-react';
+import { useStore } from './lib/store';
+import { cn } from './lib/util';
+import type { TKey } from './lib/i18n';
+import { BrandMark } from './components/BrandMark';
+import Dashboard from './pages/Dashboard';
+import DaySheet from './pages/DaySheet';
+import Closing from './pages/Closing';
+import Dues from './pages/Dues';
+import SettingsPage from './pages/Settings';
 
-export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'sheets' | 'closing'>('dashboard');
+// Charts are heavy – load the reports page on demand.
+const Reports = lazy(() => import('./pages/Reports'));
+
+const NAV: { to: string; key: TKey; icon: typeof Home }[] = [
+  { to: '/', key: 'navHome', icon: Home },
+  { to: '/sheet', key: 'navSheet', icon: Gauge },
+  { to: '/closing', key: 'navClosing', icon: Wallet },
+  { to: '/dues', key: 'navDues', icon: HandCoins },
+  { to: '/reports', key: 'navReports', icon: BarChart3 },
+];
+
+function useThemeSync() {
+  const { data } = useStore();
+  const pref = data.settings.theme;
+  useEffect(() => {
+    const mq = matchMedia('(prefers-color-scheme: dark)');
+    const apply = () => {
+      const dark = pref === 'dark' || (pref === 'system' && mq.matches);
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    };
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, [pref]);
+  useEffect(() => {
+    document.documentElement.lang = data.settings.language;
+    document.title = `${data.settings.stationName} · Fuel Ledger`;
+  }, [data.settings.language, data.settings.stationName]);
+}
+
+function ScrollTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
+}
+
+function Shell() {
+  const { data, t, toasts } = useStore();
+  useThemeSync();
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
-      <header className="bg-emerald-700 text-white shadow-md">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <Fuel className="w-8 h-8 text-emerald-200" />
-            <div>
-              <h1 className="text-xl font-bold tracking-tight">Kalyani Fuel Station (পেট্রোল পাম্প)</h1>
-              <p className="text-xs text-emerald-100">Daily Sales & Collection Management System</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="px-3 py-1 bg-emerald-800 rounded-full text-xs font-medium text-emerald-200 border border-emerald-600">
-              Station ID: 219 & 285
-            </span>
-            <span className="text-xs text-emerald-100">Owner Dashboard</span>
+    <div className="min-h-screen lg:flex">
+      <ScrollTop />
+      {/* Desktop rail */}
+      <aside className="no-print sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-line bg-surface/70 px-4 py-6 backdrop-blur lg:flex">
+        <div className="flex items-center gap-3 px-2">
+          <BrandMark className="h-10 w-10 shrink-0" />
+          <div className="min-w-0">
+            <div className="truncate font-display text-[15px] font-extrabold leading-tight">{data.settings.stationName}</div>
+            <div className="truncate text-xs text-ink-3">{t('appTagline')}</div>
           </div>
         </div>
-      </header>
+        <nav className="mt-8 flex flex-col gap-1">
+          {[...NAV, { to: '/settings', key: 'navSettings' as TKey, icon: SettingsIcon }].map(({ to, key, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={to === '/'}
+              className={({ isActive }) =>
+                cn(
+                  'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition',
+                  isActive ? 'bg-ink text-bg' : 'text-ink-2 hover:bg-sunk hover:text-ink'
+                )
+              }
+            >
+              <Icon className="h-[18px] w-[18px]" />
+              {t(key)}
+            </NavLink>
+          ))}
+        </nav>
+        <div className="mt-auto rounded-xl border border-dashed border-line p-3 text-xs leading-relaxed text-ink-3">{t('savedLocal')}</div>
+      </aside>
 
-      <main className="max-w-7xl mx-auto px-4 py-8 flex-1 w-full">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between text-slate-500 mb-2">
-              <span className="text-sm font-medium">Today's Total Sale</span>
-              <Fuel className="w-4 h-4 text-emerald-600" />
-            </div>
-            <div className="text-2xl font-bold text-slate-900">₹89,262.84</div>
-            <div className="text-xs text-slate-500 mt-1">603.59 L (Petrol) + 250.83 L (Product B)</div>
+      <div className="min-w-0 flex-1">
+        {/* Mobile top bar */}
+        <header className="no-print sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-line bg-bg/85 px-4 py-3 backdrop-blur lg:hidden">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <BrandMark className="h-8 w-8 shrink-0" />
+            <div className="truncate font-display text-[15px] font-extrabold">{data.settings.stationName}</div>
           </div>
+          <NavLink to="/settings" className={({ isActive }) => cn('btn-quiet', isActive && 'bg-sunk text-ink')} aria-label={t('navSettings')}>
+            <SettingsIcon className="h-5 w-5" />
+          </NavLink>
+        </header>
 
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between text-slate-500 mb-2">
-              <span className="text-sm font-medium">Total Collected</span>
-              <TrendingUp className="w-4 h-4 text-blue-600" />
-            </div>
-            <div className="text-2xl font-bold text-slate-900">₹89,251.00</div>
-            <div className="text-xs text-slate-500 mt-1">Cash + UPI/PTM + Card + Due</div>
-          </div>
+        <main className="print-full mx-auto w-full max-w-6xl px-4 pb-28 pt-5 sm:px-6 lg:px-10 lg:pb-12 lg:pt-8">
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/sheet" element={<DaySheet />} />
+            <Route path="/closing" element={<Closing />} />
+            <Route path="/dues" element={<Dues />} />
+            <Route path="/reports" element={<Suspense fallback={<div className="h-64 animate-pulse rounded-2xl bg-sunk" />}><Reports /></Suspense>} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="*" element={<Dashboard />} />
+          </Routes>
+        </main>
+      </div>
 
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between text-slate-500 mb-2">
-              <span className="text-sm font-medium">Attendant Short/Excess</span>
-              <AlertTriangle className="w-4 h-4 text-amber-500" />
-            </div>
-            <div className="text-2xl font-bold text-amber-600">-₹11.84</div>
-            <div className="text-xs text-slate-500 mt-1">Sheet 219 (-₹4.30) | Sheet 285 (-₹7.54)</div>
-          </div>
-
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between text-slate-500 mb-2">
-              <span className="text-sm font-medium">Cash Denomination Match</span>
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            </div>
-            <div className="text-2xl font-bold text-emerald-600">₹66,460.00</div>
-            <div className="text-xs text-emerald-700 mt-1">Difference: ₹0.00 (Balanced)</div>
-          </div>
+      {/* Mobile bottom nav */}
+      <nav className="no-print fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
+        <div className="mx-auto grid max-w-lg grid-cols-5">
+          {NAV.map(({ to, key, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={to === '/'}
+              className={({ isActive }) =>
+                cn('relative flex flex-col items-center gap-1 py-2.5 text-[10.5px] font-semibold transition', isActive ? 'text-brand' : 'text-ink-3')
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  {isActive && <span className="absolute top-0 h-0.5 w-8 rounded-full bg-brand" />}
+                  <Icon className="h-5 w-5" />
+                  <span className="max-w-full truncate px-0.5">{t(key)}</span>
+                </>
+              )}
+            </NavLink>
+          ))}
         </div>
+      </nav>
 
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-          <div className="flex border-b border-slate-200 pb-4 mb-6 gap-4">
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className={`pb-2 text-sm font-semibold transition-colors ${
-                activeTab === 'dashboard'
-                  ? 'border-b-2 border-emerald-600 text-emerald-600'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Overview & Status
-            </button>
-            <button
-              onClick={() => setActiveTab('sheets')}
-              className={`pb-2 text-sm font-semibold transition-colors ${
-                activeTab === 'sheets'
-                  ? 'border-b-2 border-emerald-600 text-emerald-600'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Daily Sheets (219 & 285)
-            </button>
-            <button
-              onClick={() => setActiveTab('closing')}
-              className={`pb-2 text-sm font-semibold transition-colors ${
-                activeTab === 'closing'
-                  ? 'border-b-2 border-emerald-600 text-emerald-600'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Day Closing & Denominations
-            </button>
+      <div className="no-print pointer-events-none fixed inset-x-0 bottom-24 z-50 flex flex-col items-center gap-2 px-4 lg:bottom-6">
+        {toasts.map((ts) => (
+          <div key={ts.id} className={cn('rise rounded-xl px-4 py-2.5 text-sm font-semibold shadow-lift', ts.tone === 'ok' ? 'bg-ink text-bg' : 'bg-warn text-white')}>
+            {ts.text}
           </div>
-
-          {activeTab === 'dashboard' && (
-            <div className="space-y-4">
-              <h2 className="text-lg font-bold text-slate-800">System Ready & Synchronized</h2>
-              <p className="text-sm text-slate-600">
-                Connected to backend API. Single source of truth calculation engine active.
-                Section 1.1 real customer notebook data verified and ready for live operation.
-              </p>
-              <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-semibold text-slate-800">API Health Status</div>
-                  <div className="text-xs text-slate-500">Node 22 + Express 5 + Mongoose 8 + Shared Calculation Engine</div>
-                </div>
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
-                  Online
-                </span>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'sheets' && (
-            <div className="space-y-4">
-              <h2 className="text-lg font-bold text-slate-800">Notebook Page Emulation</h2>
-              <p className="text-sm text-slate-600">
-                Machine 219 (Attendant Sheet 1) & Machine 285 (Attendant Sheet 2) with 4 nozzles each,
-                rapid UPI/PTM entry list, card swipes, due customer tracking, and auto-computed short/excess.
-              </p>
-            </div>
-          )}
-
-          {activeTab === 'closing' && (
-            <div className="space-y-4">
-              <h2 className="text-lg font-bold text-slate-800">End of Day Denomination Balancing</h2>
-              <p className="text-sm text-slate-600">
-                500 × 92, 200 × 35, 100 × 133, 20 × 6, 10 × 4 = ₹66,460.00 cash reconciliation.
-              </p>
-            </div>
-          )}
-        </div>
-      </main>
-
-      <footer className="border-t border-slate-200 bg-white py-4 text-center text-xs text-slate-500">
-        Petrol Pump Management System &bull; Bengali & English Forecourt Ready &bull; Powered by Antigravity
-      </footer>
+        ))}
+      </div>
     </div>
   );
 }
 
+export default function App() {
+  return (
+    <HashRouter>
+      <Shell />
+    </HashRouter>
+  );
+}

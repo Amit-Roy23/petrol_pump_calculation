@@ -1,13 +1,15 @@
 {
   "extends": "@petrolpump/config/tsconfig.react.json",
   "compilerOptions": {
-    "outDir": "./dist",
-    "rootDir": "./src",
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
-    }
+      "@/*": ["./src/*"],
+      "@petrolpump/shared": ["../../packages/shared/src/index.ts"]
+    },
+    "types": ["vite/client"]
   },
-  "include": ["src"]
+  "include": ["src", "test"]
 }
-

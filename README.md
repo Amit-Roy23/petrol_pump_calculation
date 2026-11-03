@@ -9,7 +9,7 @@ A production-grade forecourt daily sales and collection management platform buil
 - **Monorepo:** Turborepo + pnpm workspaces + TypeScript (strict mode)
 - **Backend API (`apps/api`):** Node.js 22, Express, Mongoose 8, JWT auth (access + rotating refresh tokens), role-based access control, in-memory replica set testing with MongoDB Memory Server.
 - **Shared Package (`packages/shared`):** Zod schemas, TypeScript enums, Indian currency & number formatters, integer milli-unit and paise helpers, and a single source of truth **Calculation Engine** (`packages/shared/src/calc/`).
-- **Web Dashboard (`apps/web`):** React 19, Vite, TailwindCSS, Lucide icons, responsive layout with station overview and notebook emulation screens.
+- **Web App (`apps/web`) — "Fuel Ledger":** React 19, Vite, TailwindCSS. A complete, offline-first daily calculation app (works without the API; data is kept in the browser with JSON backup/restore). See *Web App* below.
 - **Mobile Forecourt App (`apps/mobile`):** React Native, Expo SDK 52, Expo Router, `eas.json` preview profile configured for direct Android `.apk` builds.
 - **Shared Config (`packages/config`):** Base, Node, and React tsconfig presets.
 
@@ -50,6 +50,38 @@ A production-grade forecourt daily sales and collection management platform buil
   - Online Total: ₹11,057.00
   - Expected Cash: ₹43,885.00 + ₹22,525.00 + ₹50.00 (Other) = ₹66,460.00
   - Denomination Count: ₹66,460.00 → **Cash Difference: ₹0.00 (Balanced)**
+
+---
+
+## Web App (`apps/web`)
+
+The web app replaces the notebook page directly. It needs no server or database: everything is stored on the device (localStorage) and can be backed up to / restored from a JSON file.
+
+| Screen | What it does |
+|---|---|
+| **Today** | Day's total sale in a dispenser-style display, petrol/diesel litres, collected, short/excess per machine, cash-in-drawer check, outstanding dues, last 7 days. |
+| **Meter Sheet** | One tab per machine (219, 285 …). Each nozzle: opening (auto-carried from yesterday's closing), closing, optional test litres → litres. Per product `litres × rate = amount` (notebook rounding), machine total. Collections: cash, P.T.M/UPI slips, card slips, due (credit) per customer, remark. Live short/excess. Lock a finished day. Print. |
+| **Day Closing** | Note counter (₹2000…₹1 + coins) vs expected cash (machine cash + due received in cash + other cash − expenses). Total online (P.T.M). Day summary table per machine. |
+| **Dues** | Credit customers with running balance (opening due + credit given on sheets − payments received), payment receipt (cash/online), full ledger. |
+| **Reports** | Date range (7d / 30d / month / all / custom), totals, daily sales chart, product share, day-wise table, CSV export, print. |
+| **Settings** | Station name, products & default rates, machines & nozzles (any count, product per nozzle, starting reading), rounding rule, tolerance, English/বাংলা, light/dark/system theme, backup/restore, sample data, reset. |
+
+Things that speed up entry or catch mistakes:
+
+- Amount fields take notebook-style sums: `20000+2525` and `500x92` both work. In the P.T.M or card box, typing `1160+114+500` and pressing Enter adds three separate slips.
+- Opening readings carry forward. If an opening doesn't match the previous closing you get a warning with one-click fix.
+- A closing reading lower than the opening is flagged. So is any nozzle that shows more than 5,000 L in a day.
+- Short/excess colours: green when it balances exactly, amber within the tolerance you set, red beyond it.
+- Changing the rate on the latest day also updates the default rate for the days after it. Each day keeps its own rate history.
+- Fully responsive: a side menu on desktop, a bottom tab bar on phones, and print-friendly pages.
+
+```bash
+pnpm --filter @petrolpump/web dev      # http://localhost:5173
+pnpm --filter @petrolpump/web test     # notebook-page regression tests
+pnpm --filter @petrolpump/web build    # static files in apps/web/dist (host anywhere)
+```
+
+On first launch choose **Explore with sample data** to load the two notebook pages from 19/06/2026 (Machine 219 short ₹4.30, Machine 285 short ₹7.54, cash drawer ₹66,460 balanced).
 
 ---
 
