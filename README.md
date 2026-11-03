@@ -94,3 +94,4 @@ pnpm dev
 - [ ] **Shift Frequency:** Confirm if sheets are closed strictly once per day or per shift (e.g., Morning/Evening).
 - [ ] **Bank Settlement:** Confirm if card swipe amounts are reconciled with physical bank batch settlement slips later.
 - [ ] **Tank Stock Tracking:** Confirm if dip reading / underground tank stock tracking is required in subsequent phases.
+
