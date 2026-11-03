@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:8.0
+    container_name: petrolpump-mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: petrolpump
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --eval 'rs.status().ok' || mongosh --eval 'rs.initiate({_id:\"rs0\",members:[{_id:0,host:\"localhost:27017\"}]}).ok'"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 2s
+
+volumes:
+  mongo-data:
+

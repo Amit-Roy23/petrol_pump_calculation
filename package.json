@@ -1,0 +1,20 @@
+{
+  "name": "petrolpump-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "pnpm@11.23.0",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "seed": "pnpm --filter @petrolpump/api seed",
+    "clean": "turbo run clean"
+  },
+  "devDependencies": {
+    "prettier": "^3.5.3",
+    "turbo": "^2.4.4",
+    "typescript": "^5.8.2"
+  }
+}
+

@@ -1,0 +1,30 @@
+{
+  "name": "@petrolpump/shared",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "decimal.js": "^10.5.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@petrolpump/config": "workspace:*",
+    "@types/node": "^22.20.5",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.7"
+  }
+}
