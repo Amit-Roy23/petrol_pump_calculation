@@ -68,10 +68,11 @@ export interface CloudState {
   error?: string;
 }
 
-interface Toast {
+export interface Toast {
   id: number;
   text: string;
   tone: 'ok' | 'warn';
+  action?: { label: string; run: () => void };
 }
 
 interface Ctx {
@@ -87,7 +88,8 @@ interface Ctx {
   /** Edit a day; creates it (with carried-forward openings) on first edit. */
   updateDay: (date: string, fn: (day: DayRecord, data: AppData) => void) => void;
   t: (k: TKey) => string;
-  toast: (text: string, tone?: Toast['tone']) => void;
+  toast: (text: string, tone?: Toast['tone'], action?: Toast['action']) => void;
+  dismissToast: (id: number) => void;
   toasts: Toast[];
   cloud: CloudState;
   login: (password: string) => Promise<void>;
@@ -358,11 +360,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const lang = data.settings.language;
   const t = useCallback((k: TKey) => dict[lang][k] ?? dict.en[k] ?? k, [lang]);
 
-  const toast = useCallback((text: string, tone: Toast['tone'] = 'ok') => {
-    const id = Date.now() + Math.random();
-    setToasts((ts) => [...ts, { id, text, tone }]);
-    setTimeout(() => setToasts((ts) => ts.filter((x) => x.id !== id)), 2600);
-  }, []);
+  const dismissToast = useCallback((id: number) => setToasts((ts) => ts.filter((x) => x.id !== id)), []);
+  const toast = useCallback(
+    (text: string, tone: Toast['tone'] = 'ok', action?: Toast['action']) => {
+      const id = Date.now() + Math.random();
+      setToasts((ts) => [...ts.slice(-2), { id, text, tone, action }]);
+      setTimeout(() => dismissToast(id), action ? 5000 : 2600);
+    },
+    [dismissToast]
+  );
 
   const value: Ctx = {
     data,
@@ -375,6 +381,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     updateDay,
     t,
     toast,
+    dismissToast,
     toasts,
     cloud,
     login,

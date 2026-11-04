@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, Banknote, CheckCircle2, CircleDashed, Fuel, Gauge, HandCoins, Scale, Sparkles, TriangleAlert } from 'lucide-react';
+import { ArrowRight, Banknote, Check, CheckCircle2, Fuel, Gauge, HandCoins, Scale, Sparkles } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { computeDay, customerBalances } from '../lib/compute';
 import { sampleData } from '../lib/seed';
@@ -99,36 +99,7 @@ export default function Dashboard() {
               ))}
             </div>
           </div>
-          <div className="flex flex-col justify-between gap-4">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <div className="label">{t('status')}</div>
-                <div className="flex items-center gap-2 font-semibold">
-                  {!exists ? (
-                    <>
-                      <CircleDashed className="h-4 w-4 text-ink-3" /> {t('noData')}
-                    </>
-                  ) : calc.hasError ? (
-                    <>
-                      <TriangleAlert className="h-4 w-4 text-bad" /> {t('hasErrors')}
-                    </>
-                  ) : calc.complete ? (
-                    <>
-                      <CheckCircle2 className="h-4 w-4 text-ok" /> {t('complete')}
-                    </>
-                  ) : (
-                    <>
-                      <CircleDashed className="h-4 w-4 text-warn" /> {t('incomplete')}
-                    </>
-                  )}
-                </div>
-              </div>
-              {day.locked && <span className="chip bg-sunk text-ink-2">🔒</span>}
-            </div>
-            <Link to="/sheet" className="btn-primary w-full sm:w-auto sm:self-start">
-              <Gauge className="h-4 w-4" /> {exists ? t('openSheet') : t('startDay')}
-            </Link>
-          </div>
+          <Checklist calc={calc} exists={exists} locked={day.locked} />
         </div>
       </Card>
 
@@ -232,6 +203,63 @@ export default function Dashboard() {
           </Link>
         </div>
       </div>
+    </div>
+  );
+}
+
+function Checklist({ calc, exists, locked }: { calc: ReturnType<typeof computeDay>; exists: boolean; locked: boolean }) {
+  const { t } = useStore();
+  const nozzles = calc.sheets.reduce((a, s) => a + s.rows.length, 0);
+  const filled = calc.sheets.reduce((a, s) => a + s.filledNozzles, 0);
+  const moneySheets = calc.sheets.filter((s) => s.collectedPaise > 0).length;
+  const steps = [
+    { to: '/sheet', label: t('todoReadings'), done: exists && calc.complete && !calc.hasError, error: calc.hasError, detail: `${filled}/${nozzles}` },
+    { to: '/sheet', label: t('todoMoney'), done: calc.sheets.length > 0 && moneySheets === calc.sheets.length, detail: `${moneySheets}/${calc.sheets.length}` },
+    { to: '/closing', label: t('todoCount'), done: calc.denominationsEntered, detail: calc.denominationsEntered ? (calc.cashDiffPaise === 0 ? '✓' : rupee(calc.cashDiffPaise, { sign: true })) : '' },
+    { to: '/sheet', label: t('todoLock'), done: locked, detail: '' },
+  ];
+  const doneCount = steps.filter((s) => s.done).length;
+  const nextIdx = steps.findIndex((s) => !s.done);
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <div className="label mb-0">{t('todoTitle')}</div>
+        <span className="num text-xs font-bold text-ink-3">
+          {doneCount}/{steps.length}
+        </span>
+      </div>
+      {doneCount === steps.length ? (
+        <div className="flex items-center gap-2 rounded-xl bg-ok-soft px-3 py-3 text-sm font-semibold text-ok">
+          <CheckCircle2 className="h-5 w-5" /> {t('allDone')}
+        </div>
+      ) : (
+        <ol className="space-y-1.5">
+          {steps.map((s, i) => (
+            <li key={s.label}>
+              <Link
+                to={s.to}
+                className={cn(
+                  'flex items-center gap-3 rounded-xl border px-3 py-2.5 text-sm transition',
+                  i === nextIdx ? 'border-brand bg-brand-soft/50 font-semibold' : 'border-transparent hover:bg-sunk',
+                  s.done && 'text-ink-3'
+                )}
+              >
+                <span
+                  className={cn(
+                    'grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] font-bold',
+                    s.done ? 'bg-ok text-white' : s.error ? 'bg-bad text-white' : i === nextIdx ? 'bg-brand text-brand-ink' : 'bg-sunk text-ink-3'
+                  )}
+                >
+                  {s.done ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : s.error ? '!' : i + 1}
+                </span>
+                <span className={cn('flex-1', s.done && 'line-through decoration-ink-3/50')}>{s.label}</span>
+                {s.detail && <span className="num text-xs text-ink-3">{s.detail}</span>}
+                {i === nextIdx && <ArrowRight className="h-4 w-4 text-brand" />}
+              </Link>
+            </li>
+          ))}
+        </ol>
+      )}
     </div>
   );
 }

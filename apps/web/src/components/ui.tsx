@@ -27,11 +27,11 @@ export function SectionTitle({ icon, title, right, sub }: { icon?: React.ReactNo
   );
 }
 
-export const toneClass: Record<FuelTone, { dot: string; soft: string; text: string; bar: string }> = {
-  petrol: { dot: 'bg-petrol', soft: 'bg-petrol-soft', text: 'text-petrol', bar: 'border-petrol' },
-  diesel: { dot: 'bg-diesel', soft: 'bg-diesel-soft', text: 'text-diesel', bar: 'border-diesel' },
-  premium: { dot: 'bg-premium', soft: 'bg-premium-soft', text: 'text-premium', bar: 'border-premium' },
-  cng: { dot: 'bg-cng', soft: 'bg-cng-soft', text: 'text-cng', bar: 'border-cng' },
+export const toneClass: Record<FuelTone, { dot: string; soft: string; text: string; bar: string; tint: string }> = {
+  petrol: { dot: 'bg-petrol', soft: 'bg-petrol-soft', text: 'text-petrol', bar: 'border-petrol', tint: 'bg-petrol-soft/40' },
+  diesel: { dot: 'bg-diesel', soft: 'bg-diesel-soft', text: 'text-diesel', bar: 'border-diesel', tint: 'bg-diesel-soft/40' },
+  premium: { dot: 'bg-premium', soft: 'bg-premium-soft', text: 'text-premium', bar: 'border-premium', tint: 'bg-premium-soft/40' },
+  cng: { dot: 'bg-cng', soft: 'bg-cng-soft', text: 'text-cng', bar: 'border-cng', tint: 'bg-cng-soft/40' },
 };
 
 export function ProductTag({ product, className }: { product?: Product; className?: string }) {
@@ -89,6 +89,8 @@ export function MoneyInput({
   disabled,
   autoFocus,
   ariaLabel,
+  id,
+  inputClassName,
 }: {
   value: number;
   onCommit: (paise: number) => void;
@@ -97,6 +99,8 @@ export function MoneyInput({
   disabled?: boolean;
   autoFocus?: boolean;
   ariaLabel?: string;
+  id?: string;
+  inputClassName?: string;
 }) {
   const [text, setText] = useState(paiseToInput(value));
   const [focused, setFocused] = useState(false);
@@ -114,10 +118,11 @@ export function MoneyInput({
       <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3">₹</span>
       <input
         aria-label={ariaLabel}
+        id={id}
         inputMode="decimal"
         autoFocus={autoFocus}
         disabled={disabled}
-        className={cn('input num pl-7 text-right', parsed === null && 'border-bad focus:border-bad focus:ring-bad/15')}
+        className={cn('input num pl-7 text-right', inputClassName, parsed === null && 'border-bad focus:border-bad focus:ring-bad/15')}
         value={text}
         placeholder={placeholder}
         onFocus={() => setFocused(true)}
