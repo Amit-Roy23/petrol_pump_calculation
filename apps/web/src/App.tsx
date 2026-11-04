@@ -5,6 +5,7 @@ import { useStore } from './lib/store';
 import { cn } from './lib/util';
 import type { TKey } from './lib/i18n';
 import { BrandMark } from './components/BrandMark';
+import { Login, SetupNeeded, Splash, SyncBadge } from './components/Gate';
 import Dashboard from './pages/Dashboard';
 import DaySheet from './pages/DaySheet';
 import Closing from './pages/Closing';
@@ -50,8 +51,19 @@ function ScrollTop() {
 }
 
 function Shell() {
-  const { data, t, toasts } = useStore();
+  const { data, t, toasts, cloud } = useStore();
   useThemeSync();
+
+  if (cloud.mode === 'checking') return <Splash />;
+  if (cloud.mode === 'cloud' && cloud.missing.length) return <SetupNeeded missing={cloud.missing} />;
+  if (cloud.mode === 'cloud' && cloud.needLogin) return <Login />;
+  if (cloud.mode === 'cloud' && !cloud.loaded) {
+    return cloud.status === 'error' || cloud.status === 'offline' ? (
+      <SetupNeeded missing={[cloud.error ?? t('cantReach')]} />
+    ) : (
+      <Splash />
+    );
+  }
 
   return (
     <div className="min-h-screen lg:flex">
@@ -83,7 +95,10 @@ function Shell() {
             </NavLink>
           ))}
         </nav>
-        <div className="mt-auto rounded-xl border border-dashed border-line p-3 text-xs leading-relaxed text-ink-3">{t('savedLocal')}</div>
+        <div className="mt-auto space-y-2 rounded-xl border border-dashed border-line p-3 text-xs leading-relaxed text-ink-3">
+          <SyncBadge />
+          {cloud.mode === 'local' && <div>{t('savedLocal')}</div>}
+        </div>
       </aside>
 
       <div className="min-w-0 flex-1">
@@ -93,9 +108,12 @@ function Shell() {
             <BrandMark className="h-8 w-8 shrink-0" />
             <div className="truncate font-display text-[15px] font-extrabold">{data.settings.stationName}</div>
           </div>
+          <div className="flex items-center gap-1">
+          <SyncBadge compact />
           <NavLink to="/settings" className={({ isActive }) => cn('btn-quiet', isActive && 'bg-sunk text-ink')} aria-label={t('navSettings')}>
             <SettingsIcon className="h-5 w-5" />
           </NavLink>
+          </div>
         </header>
 
         <main className="print-full mx-auto w-full max-w-6xl px-4 pb-28 pt-5 sm:px-6 lg:px-10 lg:pb-12 lg:pt-8">

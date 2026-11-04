@@ -1,17 +1,18 @@
 import { useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Database, Download, Fuel, Languages, Plus, RotateCcw, Sparkles, Trash2, Upload, Warehouse } from 'lucide-react';
+import { Cloud, Database, Download, LogOut, RefreshCw, Fuel, Languages, Plus, RotateCcw, Sparkles, Trash2, Upload, Warehouse } from 'lucide-react';
 import { RoundingMode } from '@petrolpump/shared';
 import { useStore } from '../lib/store';
 import { emptyData, sampleData } from '../lib/seed';
 import type { AppData, FuelTone, Machine } from '../lib/types';
 import { cn, downloadFile, todayISO, uid } from '../lib/util';
 import { Card, Field, MoneyInput, SectionTitle, Segmented, toneClass } from '../components/ui';
+import { SyncBadge } from '../components/Gate';
 
 const TONES: FuelTone[] = ['petrol', 'diesel', 'premium', 'cng'];
 
 export default function SettingsPage() {
-  const { data, update, replace, t, toast, setDate } = useStore();
+  const { data, update, replace, t, toast, setDate, cloud, logout, syncNow } = useStore();
   const s = data.settings;
   const fileRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -22,8 +23,30 @@ export default function SettingsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="font-display text-2xl font-extrabold tracking-tight sm:text-3xl">{t('settingsTitle')}</h1>
-        <p className="text-sm text-ink-2">{t('savedLocal')}</p>
+        <p className="text-sm text-ink-2">{cloud.mode === 'cloud' ? t('cloudBody') : t('savedLocal')}</p>
       </div>
+
+      {cloud.mode === 'cloud' && (
+        <Card className="flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5">
+          <div className="flex items-center gap-3">
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-ok-soft text-ok">
+              <Cloud className="h-5 w-5" />
+            </span>
+            <div>
+              <div className="font-display font-bold">{t('cloudTitle')}</div>
+              <SyncBadge />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button className="btn-ghost" onClick={syncNow}>
+              <RefreshCw className="h-4 w-4" /> {t('syncNow')}
+            </button>
+            <button className="btn-ghost" onClick={logout}>
+              <LogOut className="h-4 w-4" /> {t('signOut')}
+            </button>
+          </div>
+        </Card>
+      )}
 
       <div className="grid gap-5 lg:grid-cols-2">
         <Card className="p-4 sm:p-5">
@@ -236,7 +259,7 @@ export default function SettingsPage() {
 
       {/* Backup */}
       <Card className="p-4 sm:p-5">
-        <SectionTitle icon={<Database className="h-5 w-5 text-brand" />} title={t('backup')} sub={t('savedLocal')} />
+        <SectionTitle icon={<Database className="h-5 w-5 text-brand" />} title={t('backup')} sub={cloud.mode === 'cloud' ? t('cloudBody') : t('savedLocal')} />
         <div className="flex flex-wrap gap-2">
           <button className="btn-primary" onClick={() => downloadFile(`fuel-ledger-backup_${todayISO()}.json`, JSON.stringify(data, null, 2), 'application/json')}>
             <Download className="h-4 w-4" /> {t('exportBackup')}
