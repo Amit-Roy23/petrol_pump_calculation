@@ -1,0 +1,4 @@
+apps/mobile
+apps/api
+**/node_modules
+**/dist
