@@ -51,7 +51,7 @@ function ScrollTop() {
 }
 
 function Shell() {
-  const { data, t, toasts, cloud } = useStore();
+  const { data, t, toasts, cloud, dismissToast } = useStore();
   useThemeSync();
 
   if (cloud.mode === 'checking') return <Splash />;
@@ -153,10 +153,25 @@ function Shell() {
         </div>
       </nav>
 
-      <div className="no-print pointer-events-none fixed inset-x-0 bottom-24 z-50 flex flex-col items-center gap-2 px-4 lg:bottom-6">
+      <div className="no-print pointer-events-none fixed inset-x-0 bottom-40 z-50 flex flex-col items-center gap-2 px-4 lg:bottom-24">
         {toasts.map((ts) => (
-          <div key={ts.id} className={cn('rise rounded-xl px-4 py-2.5 text-sm font-semibold shadow-lift', ts.tone === 'ok' ? 'bg-ink text-bg' : 'bg-warn text-white')}>
+          <div
+            key={ts.id}
+            role="status"
+            className={cn('rise pointer-events-auto flex items-center gap-3 rounded-xl py-2.5 pl-4 pr-2 text-sm font-semibold shadow-lift', ts.tone === 'ok' ? 'bg-ink text-bg' : 'bg-warn text-white', !ts.action && 'pr-4')}
+          >
             {ts.text}
+            {ts.action && (
+              <button
+                className="rounded-lg bg-bg/15 px-3 py-1 font-bold text-brand hover:bg-bg/25"
+                onClick={() => {
+                  ts.action!.run();
+                  dismissToast(ts.id);
+                }}
+              >
+                {ts.action.label}
+              </button>
+            )}
           </div>
         ))}
       </div>
