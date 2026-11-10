@@ -1,5 +1,5 @@
 import { RoundingMode } from '@petrolpump/shared';
-import type { AppData, Machine, PaymentMethod, Settings } from './types';
+import type { AppData, Machine, PaymentMethod, Settings, ShiftTemplate } from './types';
 import { uid } from './util';
 
 function machine(id: string, name: string, readings: string[] = ['', '', '', '']): Machine {
@@ -24,6 +24,14 @@ export function defaultPaymentMethods(): PaymentMethod[] {
   ];
 }
 
+export function defaultShiftTemplates(): ShiftTemplate[] {
+  return [
+    { id: 'morning', name: 'Morning', nameBn: 'সকাল', start: '06:00', end: '14:00' },
+    { id: 'evening', name: 'Evening', nameBn: 'বিকেল', start: '14:00', end: '22:00' },
+    { id: 'night', name: 'Night', nameBn: 'রাত', start: '22:00', end: '06:00' },
+  ];
+}
+
 export function defaultSettings(): Settings {
   return {
     stationName: 'My Fuel Station',
@@ -37,6 +45,8 @@ export function defaultSettings(): Settings {
     language: 'en',
     theme: 'system',
     paymentMethods: defaultPaymentMethods(),
+    staff: [],
+    shiftTemplates: defaultShiftTemplates(),
   };
 }
 
@@ -57,6 +67,11 @@ export function sampleData(current?: AppData): AppData {
     settings.theme = current.settings.theme;
   }
   settings.stationName = 'Demo Fuel Station';
+  settings.staff = [
+    { id: 'st-ramesh', name: 'Ramesh', phone: '', active: true },
+    { id: 'st-suresh', name: 'Suresh', phone: '', active: true },
+    { id: 'st-bikash', name: 'Bikash', phone: '', active: true },
+  ];
   settings.machines = [
     machine('m219', '219', ['2127209.495', '1566447.455', '209343.220', '440779.120']),
     machine('m285', '285', ['2101128.148', '1727476.473', '379571.089', '270753.198']),
@@ -79,7 +94,7 @@ export function sampleData(current?: AppData): AppData {
         sheets: {
           m219: {
             machineId: 'm219',
-            attendant: '',
+            attendant: 'Ramesh',
             remark: 'P.T.M closed 6:44',
             readings: {
               'm219-n1': { opening: '2127209.495', closing: '2127216.665', testing: '' },
@@ -94,7 +109,7 @@ export function sampleData(current?: AppData): AppData {
           },
           m285: {
             machineId: 'm285',
-            attendant: '',
+            attendant: 'Suresh',
             remark: 'P.T.M closed 5:28',
             readings: {
               'm285-n1': { opening: '2101128.148', closing: '2101384.468', testing: '' },

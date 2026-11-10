@@ -1,11 +1,11 @@
 import { useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Cloud, Database, Download, QrCode, LogOut, RefreshCw, Fuel, Languages, Plus, RotateCcw, Sparkles, Trash2, Upload, Warehouse } from 'lucide-react';
+import { Clock, Cloud, Database, Download, QrCode, LogOut, RefreshCw, Fuel, Languages, Plus, RotateCcw, Sparkles, Trash2, Upload, Warehouse } from 'lucide-react';
 import { RoundingMode } from '@petrolpump/shared';
 import { useStore } from '../lib/store';
 import { emptyData, sampleData } from '../lib/seed';
-import type { AppData, FuelTone, Machine, PaymentMethod } from '../lib/types';
-import { paymentMethods } from '../lib/compute';
+import type { AppData, FuelTone, Machine, PaymentMethod, ShiftTemplate } from '../lib/types';
+import { paymentMethods, shiftTemplates } from '../lib/compute';
 import { cn, downloadFile, todayISO, uid } from '../lib/util';
 import { Card, Field, MoneyInput, SectionTitle, Segmented, toneClass } from '../components/ui';
 import { SyncBadge } from '../components/Gate';
@@ -193,6 +193,65 @@ export default function SettingsPage() {
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* Shift timings */}
+      <Card className="p-4 sm:p-5">
+        <SectionTitle
+          icon={<Clock className="h-5 w-5 text-brand" />}
+          title={t('shiftTemplatesTitle')}
+          sub={t('shiftTemplatesHint')}
+          right={
+            <button
+              className="btn-ghost py-2"
+              onClick={() =>
+                update((d) => {
+                  d.settings.shiftTemplates = [...shiftTemplates(d.settings), { id: uid(), name: `${t('shift')} ${shiftTemplates(d.settings).length + 1}`, nameBn: '', start: '', end: '' }];
+                })
+              }
+            >
+              <Plus className="h-4 w-4" /> {t('addTemplate')}
+            </button>
+          }
+        />
+        <div className="space-y-2">
+          {shiftTemplates(s).map((tp, i) => {
+            const editTpl = (fn: (x: ShiftTemplate) => void) =>
+              update((d) => {
+                const list = shiftTemplates(d.settings).map((x) => ({ ...x }));
+                fn(list.find((x) => x.id === tp.id)!);
+                d.settings.shiftTemplates = list;
+              });
+            return (
+              <div key={tp.id} className="grid grid-cols-[28px_1fr_1fr] items-end gap-2 rounded-xl bg-sunk/60 p-3 sm:grid-cols-[28px_1fr_1fr_auto_auto_auto]">
+                <span className="mb-2.5 grid h-7 w-7 place-items-center rounded-full bg-ink text-xs font-bold text-bg">{i + 1}</span>
+                <Field label={t('productName')}>
+                  <input className="input py-2 font-semibold" value={tp.name} onChange={(e) => editTpl((x) => (x.name = e.target.value))} />
+                </Field>
+                <Field label={t('productNameBn')}>
+                  <input className="input py-2" value={tp.nameBn} onChange={(e) => editTpl((x) => (x.nameBn = e.target.value))} />
+                </Field>
+                <Field label={t('shiftStart')} className="col-start-2 sm:col-start-auto">
+                  <input type="time" className="input num py-2" value={tp.start} onChange={(e) => editTpl((x) => (x.start = e.target.value))} />
+                </Field>
+                <Field label={t('shiftEnd')}>
+                  <input type="time" className="input num py-2" value={tp.end} onChange={(e) => editTpl((x) => (x.end = e.target.value))} />
+                </Field>
+                <button
+                  className="btn-quiet mb-1 justify-self-end px-2 hover:text-bad"
+                  aria-label={t('delete')}
+                  onClick={() =>
+                    update((d) => {
+                      d.settings.shiftTemplates = shiftTemplates(d.settings).filter((x) => x.id !== tp.id);
+                    })
+                  }
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
               </div>
             );
           })}

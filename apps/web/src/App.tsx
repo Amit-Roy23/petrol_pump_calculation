@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { HashRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom';
-import { BarChart3, Gauge, HandCoins, Home, Settings as SettingsIcon, Wallet } from 'lucide-react';
+import { BarChart3, Gauge, HandCoins, Home, Settings as SettingsIcon, Users, Wallet } from 'lucide-react';
 import { useStore } from './lib/store';
 import { cn } from './lib/util';
 import type { TKey } from './lib/i18n';
@@ -11,15 +11,17 @@ import DaySheet from './pages/DaySheet';
 import Closing from './pages/Closing';
 import Dues from './pages/Dues';
 import SettingsPage from './pages/Settings';
+import Staff from './pages/Staff';
 
 // Charts are heavy – load the reports page on demand.
 const Reports = lazy(() => import('./pages/Reports'));
 
-const NAV: { to: string; key: TKey; icon: typeof Home }[] = [
+const NAV: { to: string; key: TKey; short?: TKey; icon: typeof Home }[] = [
   { to: '/', key: 'navHome', icon: Home },
-  { to: '/sheet', key: 'navSheet', icon: Gauge },
-  { to: '/closing', key: 'navClosing', icon: Wallet },
+  { to: '/sheet', key: 'navSheet', short: 'navSheetShort', icon: Gauge },
+  { to: '/closing', key: 'navClosing', short: 'navClosingShort', icon: Wallet },
   { to: '/dues', key: 'navDues', icon: HandCoins },
+  { to: '/staff', key: 'navStaff', icon: Users },
   { to: '/reports', key: 'navReports', icon: BarChart3 },
 ];
 
@@ -122,6 +124,7 @@ function Shell() {
             <Route path="/sheet" element={<DaySheet />} />
             <Route path="/closing" element={<Closing />} />
             <Route path="/dues" element={<Dues />} />
+            <Route path="/staff" element={<Staff />} />
             <Route path="/reports" element={<Suspense fallback={<div className="h-64 animate-pulse rounded-2xl bg-sunk" />}><Reports /></Suspense>} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Dashboard />} />
@@ -131,8 +134,8 @@ function Shell() {
 
       {/* Mobile bottom nav */}
       <nav className="no-print fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
-        <div className="mx-auto grid max-w-lg grid-cols-5">
-          {NAV.map(({ to, key, icon: Icon }) => (
+        <div className="mx-auto grid max-w-lg grid-cols-6">
+          {NAV.map(({ to, key, short, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
@@ -145,7 +148,7 @@ function Shell() {
                 <>
                   {isActive && <span className="absolute top-0 h-0.5 w-8 rounded-full bg-brand" />}
                   <Icon className="h-5 w-5" />
-                  <span className="max-w-full truncate px-0.5">{t(key)}</span>
+                  <span className="max-w-full truncate px-0.5">{t(short ?? key)}</span>
                 </>
               )}
             </NavLink>

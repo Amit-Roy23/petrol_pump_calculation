@@ -37,6 +37,23 @@ export interface PaymentMethod {
   active: boolean;
 }
 
+/** A pump attendant / worker. */
+export interface Staff {
+  id: string;
+  name: string;
+  phone: string;
+  active: boolean;
+}
+
+/** Named shift with usual times, e.g. Morning 06:00–14:00. */
+export interface ShiftTemplate {
+  id: string;
+  name: string;
+  nameBn: string;
+  start: string; // HH:MM
+  end: string; // HH:MM
+}
+
 export interface Settings {
   stationName: string;
   products: Product[];
@@ -48,6 +65,9 @@ export interface Settings {
   theme: ThemePref;
   /** Optional for data saved before this field existed – see paymentMethods(). */
   paymentMethods?: PaymentMethod[];
+  /** Optional for older data – see staffList() / shiftTemplates(). */
+  staff?: Staff[];
+  shiftTemplates?: ShiftTemplate[];
 }
 
 export interface NozzleReading {
@@ -64,8 +84,36 @@ export interface Entry {
   customerId?: string;
 }
 
+/**
+ * One worker's shift on one machine: its own readings and money.
+ * Shift N's closing reading is shift N+1's opening.
+ */
+export interface ShiftSheet {
+  id: string;
+  templateId: string;
+  /** Display name of the shift, e.g. "Morning". */
+  label: string;
+  start: string; // HH:MM
+  end: string; // HH:MM
+  staffId: string;
+  /** Worker name as typed (kept even if the staff record changes). */
+  attendant: string;
+  readings: Record<string, NozzleReading>;
+  cashPaise: number;
+  online: Entry[];
+  card: Entry[];
+  dues: Entry[];
+  extra?: Record<string, Entry[]>;
+  remark: string;
+}
+
+/**
+ * A machine's day. New data lives in `shifts`; the top-level reading/money
+ * fields are the pre-shift format and are read as a single shift.
+ */
 export interface MachineSheet {
   machineId: string;
+  shifts?: ShiftSheet[];
   attendant: string;
   readings: Record<string, NozzleReading>;
   cashPaise: number;
