@@ -98,6 +98,16 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
+            {calc.totalExpensesPaise > 0 && (
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                <span className="text-ink-2">
+                  {t('totalExpenses')}: <span className="num font-semibold text-bad">−{rupee(calc.totalExpensesPaise)}</span>
+                </span>
+                <span className="text-ink-2">
+                  {t('netAfterExpenses')}: <span className="num font-bold text-ink">{rupee(calc.netAfterExpensesPaise)}</span>
+                </span>
+              </div>
+            )}
           </div>
           <Checklist calc={calc} exists={exists} locked={day.locked} />
         </div>

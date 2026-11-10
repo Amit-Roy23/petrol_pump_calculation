@@ -59,6 +59,7 @@ function legacyShift(sheet: MachineSheet): ShiftSheet {
     card: sheet.card ?? [],
     dues: sheet.dues ?? [],
     extra: sheet.extra ?? {},
+    expenses: [],
     remark: sheet.remark ?? '',
   };
 }
@@ -101,6 +102,7 @@ export function newShift(settings: Settings, machine: Machine, index: number, op
     card: [],
     dues: [],
     extra: {},
+    expenses: [],
     remark: '',
   };
 }
@@ -189,6 +191,9 @@ interface CalcCore {
   duePaise: number;
   extraPaise: Record<string, number>;
   extraTotalPaise: number;
+  /** Expenses the worker paid from the shift's cash – they account for missing cash. */
+  shiftExpensesPaise: number;
+  /** Everything the worker accounts for: money + dues + expenses paid. */
   collectedPaise: number;
   diffPaise: number;
   filledNozzles: number;
@@ -218,6 +223,7 @@ export interface SheetCalc {
   /** PaymentMethod.id → paise for the extra methods (PPM, PPS …). */
   extraPaise: Record<string, number>;
   extraTotalPaise: number;
+  shiftExpensesPaise: number;
   collectedPaise: number;
   /** collected − sale. Negative = short, positive = excess. */
   diffPaise: number;
@@ -243,7 +249,14 @@ export interface DayCalc {
   receiptsCashPaise: number;
   receiptsOnlinePaise: number;
   otherCashPaise: number;
+  /** Expenses paid from the cash drawer at day end (Day Closing). */
   expensesPaise: number;
+  /** Expenses workers paid from their shift cash (meter sheet). */
+  shiftExpensesPaise: number;
+  /** All of today's expenses. */
+  totalExpensesPaise: number;
+  /** Today's sale minus all expenses. */
+  netAfterExpensesPaise: number;
   /** Cash that should physically be in the drawer. */
   expectedCashPaise: number;
   countedCashPaise: number;
@@ -381,7 +394,8 @@ function computeShift(data: AppData, day: DayRecord, machine: Machine, shift: Sh
   const extraPaise: Record<string, number> = {};
   for (const [id, entries] of Object.entries(shift.extra ?? {})) extraPaise[id] = sumPaise(entries);
   const extraTotalPaise = Object.values(extraPaise).reduce((a, b) => a + b, 0);
-  const collectedPaise = shift.cashPaise + onlinePaise + cardPaise + duePaise + extraTotalPaise;
+  const shiftExpensesPaise = sumPaise(shift.expenses ?? []);
+  const collectedPaise = shift.cashPaise + onlinePaise + cardPaise + duePaise + extraTotalPaise + shiftExpensesPaise;
   const filledNozzles = rows.filter((r) => r.status === 'ok').length;
   return {
     shift,
@@ -397,6 +411,7 @@ function computeShift(data: AppData, day: DayRecord, machine: Machine, shift: Sh
     duePaise,
     extraPaise,
     extraTotalPaise,
+    shiftExpensesPaise,
     collectedPaise,
     diffPaise: collectedPaise - salePaise,
     filledNozzles,
@@ -459,6 +474,7 @@ export function computeSheet(data: AppData, day: DayRecord, machine: Machine): S
     duePaise: sum('duePaise'),
     extraPaise,
     extraTotalPaise: sum('extraTotalPaise'),
+    shiftExpensesPaise: sum('shiftExpensesPaise'),
     collectedPaise,
     diffPaise: collectedPaise - salePaise,
     filledNozzles,
@@ -512,6 +528,10 @@ export function computeDay(data: AppData, day: DayRecord): DayCalc {
   const receiptsOnlinePaise = sumPaise(receipts.filter((r) => r.mode === 'online'));
   const otherCashPaise = sumPaise(day.closing.otherCash);
   const expensesPaise = sumPaise(day.closing.expenses);
+  // Shift expenses were paid before the cash was handed over, so the handed-over
+  // cash is already net of them – only drawer expenses reduce the expected cash.
+  const shiftExpensesPaise = add('shiftExpensesPaise');
+  const totalExpensesPaise = expensesPaise + shiftExpensesPaise;
   const expectedCashPaise = cashPaise + receiptsCashPaise + otherCashPaise - expensesPaise;
   const countedCashPaise = denominationTotal(day.closing.denominations);
 
@@ -533,6 +553,9 @@ export function computeDay(data: AppData, day: DayRecord): DayCalc {
     receiptsOnlinePaise,
     otherCashPaise,
     expensesPaise,
+    shiftExpensesPaise,
+    totalExpensesPaise,
+    netAfterExpensesPaise: salePaise - totalExpensesPaise,
     expectedCashPaise,
     countedCashPaise,
     cashDiffPaise: countedCashPaise - expectedCashPaise,
@@ -593,6 +616,33 @@ export function customerLedger(data: AppData, customerId: string): LedgerLine[] 
     if (r.customerId === customerId) lines.push({ date: r.date, kind: 'receipt', amountPaise: r.amountPaise, note: r.note || r.mode });
   }
   return lines.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/* ---------------- expenses ---------------- */
+
+export interface ExpenseLine {
+  id: string;
+  label: string;
+  amountPaise: number;
+  /** 'shift' = paid by a worker from shift cash; 'drawer' = paid at day end. */
+  source: 'shift' | 'drawer';
+  machineName?: string;
+  shiftLabel?: string;
+  staffName?: string;
+}
+
+/** Every expense of the day, worker-paid first, then drawer expenses. */
+export function dayExpenseLines(calc: DayCalc): ExpenseLine[] {
+  const out: ExpenseLine[] = [];
+  for (const s of calc.sheets) {
+    for (const sc of s.shifts) {
+      for (const e of sc.shift.expenses ?? []) {
+        out.push({ ...e, source: 'shift', machineName: s.machine.name, shiftLabel: sc.label, staffName: sc.staffName });
+      }
+    }
+  }
+  for (const e of calc.day.closing.expenses) out.push({ ...e, source: 'drawer' });
+  return out;
 }
 
 /* ---------------- staff attendance ---------------- */

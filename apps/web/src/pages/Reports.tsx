@@ -47,7 +47,7 @@ export default function Reports() {
   const methods = paymentMethods(data.settings).filter((m) => m.active || rows.some((r) => (r.extraPaise[m.id] ?? 0) > 0));
 
   const totals = useMemo(() => {
-    const t = { sale: 0, collected: 0, cash: 0, online: 0, card: 0, due: 0, diff: 0, cashDiff: 0, extra: {} as Record<string, number>, products: new Map<string, { litres: number; amount: number }>() };
+    const t = { sale: 0, collected: 0, cash: 0, online: 0, card: 0, due: 0, diff: 0, cashDiff: 0, extra: {} as Record<string, number>, expenses: 0, products: new Map<string, { litres: number; amount: number }>() };
     for (const r of rows) {
       t.sale += r.salePaise;
       t.collected += r.collectedPaise;
@@ -55,6 +55,7 @@ export default function Reports() {
       t.online += r.onlinePaise;
       t.card += r.cardPaise;
       t.due += r.duePaise;
+      t.expenses += r.totalExpensesPaise;
       for (const [id, v] of Object.entries(r.extraPaise)) t.extra[id] = (t.extra[id] ?? 0) + v;
       t.diff += r.diffPaise;
       t.cashDiff += r.denominationsEntered ? r.cashDiffPaise : 0;
@@ -72,14 +73,14 @@ export default function Reports() {
 
   const exportCsv = () => {
     const prods = data.settings.products;
-    const header = ['Date', ...prods.flatMap((p) => [`${p.name} L`, `${p.name} Rate`, `${p.name} Amount`]), 'Sale', 'Cash', 'Online', 'Card', ...methods.map((m) => m.name), 'Due', 'Collected', 'Short/Excess', 'Counted Cash', 'Cash Diff'];
+    const header = ['Date', ...prods.flatMap((p) => [`${p.name} L`, `${p.name} Rate`, `${p.name} Amount`]), 'Sale', 'Cash', 'Online', 'Card', ...methods.map((m) => m.name), 'Due', 'Collected', 'Short/Excess', 'Expenses', 'Sale After Expenses', 'Counted Cash', 'Cash Diff'];
     const lines = rows.map((r) => [
       r.day.date,
       ...prods.flatMap((p) => {
         const pl = r.products.find((x) => x.product.id === p.id);
         return [pl ? (pl.litresCenti / 100).toFixed(2) : '0.00', ((r.day.rates[p.id] ?? p.ratePaise) / 100).toFixed(2), pl ? (pl.amountPaise / 100).toFixed(2) : '0.00'];
       }),
-      ...[r.salePaise, r.cashPaise, r.onlinePaise, r.cardPaise, ...methods.map((m) => r.extraPaise[m.id] ?? 0), r.duePaise, r.collectedPaise, r.diffPaise, r.countedCashPaise, r.denominationsEntered ? r.cashDiffPaise : 0].map((v) => (v / 100).toFixed(2)),
+      ...[r.salePaise, r.cashPaise, r.onlinePaise, r.cardPaise, ...methods.map((m) => r.extraPaise[m.id] ?? 0), r.duePaise, r.collectedPaise, r.diffPaise, r.totalExpensesPaise, r.netAfterExpensesPaise, r.countedCashPaise, r.denominationsEntered ? r.cashDiffPaise : 0].map((v) => (v / 100).toFixed(2)),
     ]);
     const csv = [header, ...lines].map((l) => l.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
     downloadFile(`fuel-ledger_${from}_${to}.csv`, csv, 'text/csv');
@@ -145,7 +146,7 @@ export default function Reports() {
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-            <Stat label={t('totalSale')} value={rupee(totals.sale)} sub={`${t('avgPerDay')} ${rupee(Math.round(totals.sale / rows.length))}`} />
+            <Stat label={t('totalSale')} value={rupee(totals.sale)} sub={`${t('totalExpenses')} ${rupee(totals.expenses)} · ${t('netAfterExpenses')} ${rupee(totals.sale - totals.expenses)}`} />
             <Stat label={t('collected')} value={rupee(totals.collected)} accent="bg-cng" sub={`${t('online')} ${rupee(totals.online)}`} />
             <Stat label={t('kpiDiff')} value={rupee(totals.diff, { sign: true })} accent={totals.diff < 0 ? 'bg-bad' : 'bg-ok'} />
             <Stat label={t('due')} value={rupee(totals.due)} accent="bg-warn" sub={`${t('card')} ${rupee(totals.card)}`} />
@@ -224,6 +225,7 @@ export default function Reports() {
                       </th>
                     ))}
                     <th className="px-3 py-2.5 text-right">{t('due')}</th>
+                    <th className="px-3 py-2.5 text-right">{t('totalExpenses')}</th>
                     <th className="px-4 py-2.5 text-right">{t('kpiDiff')}</th>
                   </tr>
                 </thead>
@@ -251,6 +253,7 @@ export default function Reports() {
                         </td>
                       ))}
                       <td className="num px-3 py-2.5 text-right">{rupee(r.duePaise)}</td>
+                      <td className="num px-3 py-2.5 text-right">{rupee(r.totalExpensesPaise)}</td>
                       <td className="px-4 py-2.5 text-right">
                         <DiffBadge paise={r.diffPaise} tolerance={data.settings.tolerancePaise * Math.max(1, r.sheets.length)} />
                       </td>
@@ -274,6 +277,7 @@ export default function Reports() {
                       </td>
                     ))}
                     <td className="num px-3 py-3 text-right">{rupee(totals.due)}</td>
+                    <td className="num px-3 py-3 text-right">{rupee(totals.expenses)}</td>
                     <td className="num px-4 py-3 text-right">{rupee(totals.diff, { sign: true })}</td>
                   </tr>
                 </tfoot>

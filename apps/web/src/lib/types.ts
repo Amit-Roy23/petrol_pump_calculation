@@ -104,6 +104,8 @@ export interface ShiftSheet {
   card: Entry[];
   dues: Entry[];
   extra?: Record<string, Entry[]>;
+  /** Expenses the worker paid out of this shift's cash (tea, repairs …). */
+  expenses?: LineItem[];
   remark: string;
 }
 

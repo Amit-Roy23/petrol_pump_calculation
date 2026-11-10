@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, Banknote, CreditCard, QrCode, Lock, Plus, Printer, Smartphone, Trash2, Unlock, UserRound } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Banknote, CreditCard, QrCode, Receipt, Wallet, Lock, Plus, Printer, Smartphone, Trash2, Unlock, UserRound } from 'lucide-react';
 import { useStore } from '../lib/store';
 import {
   addShift,
   computeDay,
+  dayExpenseLines,
   ensureShifts,
+  type DayCalc,
   setShiftReading,
   shiftTemplates,
   staffList,
@@ -16,7 +18,7 @@ import {
 import type { AppData, Entry, MachineSheet, ShiftSheet } from '../lib/types';
 import { cn, litresFmt, parseAmountExpr, rupee, uid } from '../lib/util';
 import { Card, DateNav, DiffBadge, Lcd, MoneyInput, ProductTag, toneClass, Empty } from '../components/ui';
-import { QuickAmountList } from '../components/EntryList';
+import { LineItemsEditor, QuickAmountList } from '../components/EntryList';
 
 const METHOD_ACCENTS = ['bg-diesel', 'bg-petrol', 'bg-brand', 'bg-ink'];
 
@@ -130,6 +132,8 @@ export default function DaySheet() {
       </div>
 
       <MachineSheetView key={active.machine.id} calc={active} locked={locked} />
+
+      <DayExpensesCard calc={calc} locked={locked} />
 
       <div className="no-print flex justify-end">
         <Link to="/closing" className="btn-primary">
@@ -415,6 +419,25 @@ function MachineSheetView({ calc, locked }: { calc: SheetCalc; locked: boolean }
                 />
               ))}
               <DueEditor key={`due-${shift.id}`} dues={shift.dues} locked={locked} onChange={(next) => edit((s) => (s.dues = next))} />
+              <div className="rounded-xl border border-line bg-sunk/60 p-3">
+                <div className="mb-1 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm font-bold">
+                    <span className="grid h-7 w-7 place-items-center rounded-lg bg-bad text-white">
+                      <Receipt className="h-4 w-4" />
+                    </span>
+                    {t('shiftExpenses')}
+                  </div>
+                  <div className="num text-base font-bold">{rupee(sc.shiftExpensesPaise)}</div>
+                </div>
+                <p className="mb-2 text-[11px] text-ink-3">{t('shiftExpensesHint')}</p>
+                <LineItemsEditor
+                  key={`exp-${shift.id}`}
+                  items={shift.expenses ?? []}
+                  disabled={locked}
+                  placeholder={t('expensePlaceholder')}
+                  onChange={(next) => edit((s) => (s.expenses = next))}
+                />
+              </div>
             </div>
             <p className="mt-2 text-[11px] text-ink-3">{t('onlineHint')}</p>
 
@@ -436,6 +459,7 @@ function MachineSheetView({ calc, locked }: { calc: SheetCalc; locked: boolean }
                 [t('card'), sc.cardPaise],
                 ...methods.map((m) => [methodName(m), sc.extraPaise[m.id] ?? 0]),
                 [t('due'), sc.duePaise],
+                [t('shiftExpenses'), sc.shiftExpensesPaise],
               ].map(([label, v]) => (
                 <div key={label as string} className="flex justify-between">
                   <span className="text-ink-2">{label}</span>
@@ -744,3 +768,85 @@ function DueEditor({ dues, locked, onChange }: { dues: Entry[]; locked: boolean;
   );
 }
 
+
+/**
+ * All of today's expenses in one place, visible while readings are entered:
+ * what workers paid from shift cash, plus what is paid from the office drawer.
+ */
+function DayExpensesCard({ calc, locked }: { calc: DayCalc; locked: boolean }) {
+  const { date, updateDay, t } = useStore();
+  const lines = dayExpenseLines(calc).filter((l) => l.source === 'shift');
+  return (
+    <Card className="overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3 sm:px-5">
+        <div className="flex items-center gap-2 font-display font-bold">
+          <Receipt className="h-5 w-5 text-bad" /> {t('todayExpenses')}
+        </div>
+        <span className="text-xs text-ink-3">{t('todayExpensesHint')}</span>
+      </div>
+      <div className="grid gap-5 p-4 sm:p-5 lg:grid-cols-2">
+        <div className="space-y-4">
+          {/* Paid by workers, entered per shift above */}
+          <div>
+            <div className="label">{t('paidByWorkers')}</div>
+            {lines.length ? (
+              <div className="divide-y divide-line rounded-xl border border-line">
+                {lines.map((l) => (
+                  <div key={l.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold">{l.label}</div>
+                      <div className="truncate text-[11px] text-ink-3">
+                        {t('machine')} {l.machineName} · {l.shiftLabel}
+                        {l.staffName && ` · ${l.staffName}`}
+                      </div>
+                    </div>
+                    <span className="num font-semibold">{rupee(l.amountPaise)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-xl border border-dashed border-line px-3 py-3 text-xs text-ink-3">{t('noShiftExpenses')}</p>
+            )}
+          </div>
+          {/* Paid from the office drawer – same list as Day Closing */}
+          <div>
+            <div className="label">{t('paidFromDrawer')}</div>
+            <LineItemsEditor
+              items={calc.day.closing.expenses}
+              disabled={locked}
+              placeholder={t('expensePlaceholder')}
+              onChange={(next) => updateDay(date, (d) => (d.closing.expenses = next))}
+            />
+          </div>
+        </div>
+
+        {/* Running totals */}
+        <div className="space-y-2 rounded-2xl bg-sunk/70 p-4 text-sm">
+          <div className="flex justify-between">
+            <span className="text-ink-2">{t('totalSale')}</span>
+            <span className="num font-semibold">{rupee(calc.salePaise)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-ink-2">{t('paidByWorkers')}</span>
+            <span className="num">−{rupee(calc.shiftExpensesPaise)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-ink-2">{t('paidFromDrawer')}</span>
+            <span className="num">−{rupee(calc.expensesPaise)}</span>
+          </div>
+          <div className="flex justify-between border-t border-dashed border-line pt-2 font-bold text-bad">
+            <span>{t('totalExpenses')}</span>
+            <span className="num">{rupee(calc.totalExpensesPaise)}</span>
+          </div>
+          <div className="flex items-center justify-between gap-3 border-t border-line pt-3">
+            <span className="flex items-center gap-2 font-display font-bold">
+              <Wallet className="h-4 w-4 text-ok" /> {t('netAfterExpenses')}
+            </span>
+            <Lcd value={rupee(calc.netAfterExpensesPaise)} ghost={calc.salePaise === 0} />
+          </div>
+          <p className="pt-1 text-[11px] text-ink-3">{t('expenseCashNote')}</p>
+        </div>
+      </div>
+    </Card>
+  );
+}

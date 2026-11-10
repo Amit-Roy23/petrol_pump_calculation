@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   addShift,
+  dayExpenseLines,
   computeDay,
   createDay,
   customerBalances,
@@ -207,5 +208,37 @@ describe('worker shifts', () => {
     const data = sampleData();
     ensureShifts(data.days['2026-06-19'].sheets.m285);
     expect([...customerBalances(data).values()][0].balancePaise).toBe(1145100);
+  });
+});
+
+describe('expenses', () => {
+  it('worker-paid expenses count as accounted for the shift, not as short', () => {
+    const data = sampleData();
+    const day = data.days['2026-06-19'];
+    const sheet = day.sheets.m219;
+    ensureShifts(sheet);
+    // Machine 219 was ₹4.30 short; the worker had paid ₹4.30 for tea from the cash.
+    sheet.shifts![0].expenses = [{ id: 'e1', label: 'Tea', amountPaise: 430 }];
+    const calc = computeDay(data, day);
+    expect(calc.sheets[0].shifts[0].shiftExpensesPaise).toBe(430);
+    expect(calc.sheets[0].diffPaise).toBe(0);
+    // Cash handed over is already net of it – expected drawer cash unchanged.
+    expect(calc.expectedCashPaise).toBe(6646000);
+    expect(calc.shiftExpensesPaise).toBe(430);
+  });
+
+  it('drawer expenses reduce expected cash; all expenses reduce the net', () => {
+    const data = sampleData();
+    const day = data.days['2026-06-19'];
+    day.closing.expenses = [{ id: 'd1', label: 'Generator diesel', amountPaise: 50000 }];
+    ensureShifts(day.sheets.m285).at(0)!.expenses = [{ id: 'e2', label: 'Repairs', amountPaise: 20000 }];
+    const calc = computeDay(data, day);
+    expect(calc.expectedCashPaise).toBe(6646000 - 50000);
+    expect(calc.totalExpensesPaise).toBe(70000);
+    expect(calc.netAfterExpensesPaise).toBe(8926284 - 70000);
+    expect(dayExpenseLines(calc).map((l) => [l.label, l.source])).toEqual([
+      ['Repairs', 'shift'],
+      ['Generator diesel', 'drawer'],
+    ]);
   });
 });
