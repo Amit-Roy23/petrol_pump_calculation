@@ -1,11 +1,13 @@
 import { useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, Cloud, Database, Download, QrCode, LogOut, RefreshCw, Fuel, Languages, Plus, RotateCcw, Sparkles, Trash2, Upload, Warehouse } from 'lucide-react';
+import { Clock, Cloud, Flame, Database, Download, QrCode, LogOut, RefreshCw, Fuel, Languages, Plus, RotateCcw, Sparkles, Trash2, Upload, Warehouse } from 'lucide-react';
 import { RoundingMode } from '@petrolpump/shared';
 import { useStore } from '../lib/store';
 import { emptyData, sampleData } from '../lib/seed';
 import type { AppData, FuelTone, Machine, PaymentMethod, ShiftTemplate } from '../lib/types';
 import { paymentMethods, shiftTemplates } from '../lib/compute';
+import { lpgSettings } from '../lib/lpg';
+import type { LpgSettings } from '../lib/types';
 import { cn, downloadFile, todayISO, uid } from '../lib/util';
 import { Card, Field, MoneyInput, SectionTitle, Segmented, toneClass } from '../components/ui';
 import { SyncBadge } from '../components/Gate';
@@ -13,7 +15,7 @@ import { SyncBadge } from '../components/Gate';
 const TONES: FuelTone[] = ['petrol', 'diesel', 'premium', 'cng'];
 
 export default function SettingsPage() {
-  const { data, update, replace, t, toast, setDate, cloud, logout, syncNow } = useStore();
+  const { data, update, replace, t, toast, setDate, cloud, logout, syncNow, business } = useStore();
   const s = data.settings;
   const fileRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -79,6 +81,8 @@ export default function SettingsPage() {
         </Card>
       </div>
 
+      {business === 'lpg' && <LpgSettingsCard />}
+
       {/* Products */}
       <Card className="p-4 sm:p-5">
         <SectionTitle
@@ -137,6 +141,8 @@ export default function SettingsPage() {
           })}
         </div>
       </Card>
+
+      {business !== 'lpg' && <LpgSettingsCard />}
 
       {/* Extra payment methods (PPM, PPS …) */}
       <Card className="p-4 sm:p-5">
@@ -434,5 +440,134 @@ export default function SettingsPage() {
         </div>
       </Card>
     </div>
+  );
+}
+
+/** LPG agency setup: name, cylinder types (rate + first-day stock) and counter products. */
+function LpgSettingsCard() {
+  const { data, update, t } = useStore();
+  const st = lpgSettings(data);
+  const used = (cylId: string) => Object.values(data.lpgDays ?? {}).some((d) => d.refills[cylId]?.qty || d.stock[cylId] || d.connections.some((x) => x.cylinderId === cylId));
+  const edit = (fn: (x: LpgSettings) => void) =>
+    update((d) => {
+      const next = structuredClone(lpgSettings(d));
+      fn(next);
+      d.settings.lpg = next;
+    });
+  const intInput = (v: number, onChange: (n: number) => void, label: string) => (
+    <input
+      className="input num px-2 py-2 text-center"
+      inputMode="numeric"
+      value={v || ''}
+      placeholder="0"
+      aria-label={label}
+      onChange={(e) => onChange(Math.max(0, Math.floor(Number(e.target.value.replace(/\D/g, '')) || 0)))}
+    />
+  );
+  return (
+    <Card className="space-y-5 border-cng/40 p-4 sm:p-5">
+      <SectionTitle icon={<Flame className="h-5 w-5 text-cng" />} title={t('lpgSettingsTitle')} />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label={t('lpgBusinessName')}>
+          <input className="input font-semibold" value={st.businessName} onChange={(e) => edit((x) => (x.businessName = e.target.value))} />
+        </Field>
+        <Field label={t('ncRate')}>
+          <MoneyInput value={st.newConnectionRatePaise} onCommit={(v) => edit((x) => (x.newConnectionRatePaise = v))} />
+        </Field>
+      </div>
+
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <span className="label mb-0">{t('lpgCylinders')}</span>
+          <button
+            className="btn-ghost py-1.5 text-xs"
+            onClick={() => edit((x) => void x.cylinders.push({ id: uid(), name: 'New cylinder', nameBn: '', refillRatePaise: 0, active: true, openingFull: 0, openingEmpty: 0, openingDefective: 0 }))}
+          >
+            <Plus className="h-3.5 w-3.5" /> {t('add')}
+          </button>
+        </div>
+        <div className="space-y-2">
+          {st.cylinders.map((c) => {
+            const ed = (fn: (y: (typeof st.cylinders)[number]) => void) => edit((x) => fn(x.cylinders.find((y) => y.id === c.id)!));
+            return (
+              <div key={c.id} className={cn('grid grid-cols-2 items-end gap-2 rounded-xl bg-sunk/60 p-3 lg:grid-cols-[1.3fr_1.2fr_120px_70px_70px_70px_auto]', !c.active && 'opacity-60')}>
+                <Field label={t('productName')}>
+                  <input className="input py-2 font-semibold" value={c.name} onChange={(e) => ed((y) => (y.name = e.target.value))} />
+                </Field>
+                <Field label={t('productNameBn')}>
+                  <input className="input py-2" value={c.nameBn} onChange={(e) => ed((y) => (y.nameBn = e.target.value))} />
+                </Field>
+                <Field label={t('rate')}>
+                  <MoneyInput value={c.refillRatePaise} onCommit={(v) => ed((y) => (y.refillRatePaise = v))} />
+                </Field>
+                <div className="col-span-2 grid grid-cols-3 gap-2 lg:col-span-3">
+                  <Field label={t('full')}>{intInput(c.openingFull, (n) => ed((y) => (y.openingFull = n)), `${c.name} ${t('full')}`)}</Field>
+                  <Field label={t('empty')}>{intInput(c.openingEmpty, (n) => ed((y) => (y.openingEmpty = n)), `${c.name} ${t('empty')}`)}</Field>
+                  <Field label={t('defective')}>{intInput(c.openingDefective, (n) => ed((y) => (y.openingDefective = n)), `${c.name} ${t('defective')}`)}</Field>
+                </div>
+                <div className="col-span-2 flex items-center justify-end gap-1 pb-1.5 lg:col-span-1">
+                  <label className="flex cursor-pointer items-center gap-1.5 text-xs font-semibold text-ink-2">
+                    <input type="checkbox" className="h-4 w-4 accent-[rgb(var(--brand))]" checked={c.active} onChange={(e) => ed((y) => (y.active = e.target.checked))} />
+                    {t('active')}
+                  </label>
+                  <button
+                    className="btn-quiet px-2 hover:text-bad disabled:opacity-30"
+                    disabled={used(c.id) || st.cylinders.length <= 1}
+                    title={used(c.id) ? t('inUse') : t('delete')}
+                    aria-label={t('delete')}
+                    onClick={() => edit((x) => (x.cylinders = x.cylinders.filter((y) => y.id !== c.id)))}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <span className="label mb-0">{t('lpgItems')}</span>
+          <button className="btn-ghost py-1.5 text-xs" onClick={() => edit((x) => void x.items.push({ id: uid(), name: 'New item', nameBn: '', ratePaise: 0, active: true }))}>
+            <Plus className="h-3.5 w-3.5" /> {t('add')}
+          </button>
+        </div>
+        <div className="space-y-2">
+          {st.items.map((it) => {
+            const ed = (fn: (y: (typeof st.items)[number]) => void) => edit((x) => fn(x.items.find((y) => y.id === it.id)!));
+            const itemUsed = Object.values(data.lpgDays ?? {}).some((d) => d.items[it.id]?.qty);
+            return (
+              <div key={it.id} className={cn('grid grid-cols-2 items-end gap-2 rounded-xl bg-sunk/60 p-3 sm:grid-cols-[1.3fr_1.2fr_120px_auto]', !it.active && 'opacity-60')}>
+                <Field label={t('productName')}>
+                  <input className="input py-2 font-semibold" value={it.name} onChange={(e) => ed((y) => (y.name = e.target.value))} />
+                </Field>
+                <Field label={t('productNameBn')}>
+                  <input className="input py-2" value={it.nameBn} onChange={(e) => ed((y) => (y.nameBn = e.target.value))} />
+                </Field>
+                <Field label={t('rate')}>
+                  <MoneyInput value={it.ratePaise} onCommit={(v) => ed((y) => (y.ratePaise = v))} />
+                </Field>
+                <div className="flex items-center justify-end gap-1 pb-1.5">
+                  <label className="flex cursor-pointer items-center gap-1.5 text-xs font-semibold text-ink-2">
+                    <input type="checkbox" className="h-4 w-4 accent-[rgb(var(--brand))]" checked={it.active} onChange={(e) => ed((y) => (y.active = e.target.checked))} />
+                    {t('active')}
+                  </label>
+                  <button
+                    className="btn-quiet px-2 hover:text-bad disabled:opacity-30"
+                    disabled={itemUsed}
+                    title={itemUsed ? t('inUse') : t('delete')}
+                    aria-label={t('delete')}
+                    onClick={() => edit((x) => (x.items = x.items.filter((y) => y.id !== it.id)))}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </Card>
   );
 }

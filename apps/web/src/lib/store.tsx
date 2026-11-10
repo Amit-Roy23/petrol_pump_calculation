@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import type { AppData, DayRecord } from './types';
+import type { AppData, Business, DayRecord, LpgDay } from './types';
+import { createLpgDay } from './lpg';
 import { createDay } from './compute';
 import { emptyData } from './seed';
 import { todayISO } from './util';
@@ -9,6 +10,7 @@ import { api, ApiError, checkHealth, diff, fromServer, settingsKey, snapshotOf, 
 const KEY = 'fuel-ledger:data:v1';
 const SYNCED_KEY = 'fuel-ledger:synced:v1';
 const MODE_KEY = 'fuel-ledger:mode';
+const BUSINESS_KEY = 'fuel-ledger:business';
 const POLL_MS = 30_000;
 const PUSH_DELAY_MS = 800;
 const RETRY_MS = 6_000;
@@ -52,6 +54,9 @@ function applyPatch(base: AppData, p: Patch): AppData {
   if (p.receipts) next.receipts = p.receipts;
   for (const d of p.days ?? []) next.days[d.date] = d;
   for (const d of p.deleteDays ?? []) delete next.days[d];
+  if (p.lpgDays || p.deleteLpgDays) next.lpgDays = { ...(next.lpgDays ?? {}) };
+  for (const d of p.lpgDays ?? []) next.lpgDays![d.date] = d;
+  for (const d of p.deleteLpgDays ?? []) delete next.lpgDays![d];
   return next;
 }
 
@@ -87,6 +92,13 @@ interface Ctx {
   getDay: (date: string) => { day: DayRecord; exists: boolean };
   /** Edit a day; creates it (with carried-forward openings) on first edit. */
   updateDay: (date: string, fn: (day: DayRecord, data: AppData) => void) => void;
+  /** LPG day for a date, created in memory (not saved) if missing. */
+  getLpgDay: (date: string) => { day: LpgDay; exists: boolean };
+  /** Edit an LPG day; created on first edit. Ignored when the day is locked. */
+  updateLpgDay: (date: string, fn: (day: LpgDay, data: AppData) => void) => void;
+  /** Which business this device is looking at (per device, not synced). */
+  business: Business;
+  setBusiness: (b: Business) => void;
   t: (k: TKey) => string;
   toast: (text: string, tone?: Toast['tone'], action?: Toast['action']) => void;
   dismissToast: (id: number) => void;
@@ -166,10 +178,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const synced = syncedRef.current;
       const res = await api.snapshot(initialLoad || !synced ? undefined : synced.rev);
       if ('unchanged' in res) return;
-      const serverEmpty = !res.settings && Object.keys(res.days).length === 0;
+      const serverEmpty = !res.settings && Object.keys(res.days).length === 0 && Object.keys(res.lpgDays ?? {}).length === 0;
       if (serverEmpty) {
         // Brand-new database: this device's data (if any) becomes the first copy.
-        setSynced(freshRef.current ? snapshotOf(dataRef.current, res.rev) : { rev: res.rev, settings: '', customers: '', receipts: '', days: {} });
+        setSynced(freshRef.current ? snapshotOf(dataRef.current, res.rev) : { rev: res.rev, settings: '', customers: '', receipts: '', days: {}, lpgDays: {} });
       } else {
         const pending = synced ? diff(dataRef.current, synced) : null;
         const serverData = fromServer(res, dataRef.current);
@@ -198,12 +210,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     patchCloud({ status: 'saving' });
     try {
       const { rev } = await api.push(patch);
-      const next: SyncedState = { ...synced, days: { ...synced.days } };
+      const next: SyncedState = { ...synced, days: { ...synced.days }, lpgDays: { ...(synced.lpgDays ?? {}) } };
       if (patch.settings) next.settings = settingsKey(patch.settings);
       if (patch.customers) next.customers = JSON.stringify(patch.customers);
       if (patch.receipts) next.receipts = JSON.stringify(patch.receipts);
       for (const d of patch.days ?? []) next.days[d.date] = JSON.stringify(d);
       for (const d of patch.deleteDays ?? []) delete next.days[d];
+      for (const d of patch.lpgDays ?? []) next.lpgDays![d.date] = JSON.stringify(d);
+      for (const d of patch.deleteLpgDays ?? []) delete next.lpgDays![d];
       // Someone else wrote in between → keep the old rev so the next pull fetches their changes.
       const otherWriter = rev !== synced.rev + 1;
       next.rev = otherWriter ? synced.rev : rev;
@@ -357,6 +371,33 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [update]
   );
 
+  const getLpgDay = useCallback(
+    (d: string) => {
+      const existing = data.lpgDays?.[d];
+      return existing ? { day: existing, exists: true } : { day: createLpgDay(data, d), exists: false };
+    },
+    [data]
+  );
+
+  const updateLpgDay = useCallback(
+    (d: string, fn: (day: LpgDay, data: AppData) => void) =>
+      update((draft) => {
+        draft.lpgDays = draft.lpgDays ?? {};
+        if (!draft.lpgDays[d]) draft.lpgDays[d] = createLpgDay(draft, d);
+        const day = draft.lpgDays[d];
+        if (day.locked) return;
+        fn(day, draft);
+        day.updatedAt = new Date().toISOString();
+      }),
+    [update]
+  );
+
+  const [business, setBusinessState] = useState<Business>(() => (readRaw(BUSINESS_KEY) === 'lpg' ? 'lpg' : 'petrol'));
+  const setBusiness = useCallback((b: Business) => {
+    setBusinessState(b);
+    writeLS(BUSINESS_KEY, b);
+  }, []);
+
   const lang = data.settings.language;
   const t = useCallback((k: TKey) => dict[lang][k] ?? dict.en[k] ?? k, [lang]);
 
@@ -379,6 +420,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setDate,
     getDay,
     updateDay,
+    getLpgDay,
+    updateLpgDay,
+    business,
+    setBusiness,
     t,
     toast,
     dismissToast,

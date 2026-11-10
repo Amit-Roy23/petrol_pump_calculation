@@ -14,6 +14,7 @@ import {
 } from '../src/lib/compute';
 import { sampleData, emptyData } from '../src/lib/seed';
 import { parseAmountExpr, splitAmounts } from '../src/lib/util';
+import { computeLpgDay, createLpgDay, lpgOpeningStock, sampleLpg } from '../src/lib/lpg';
 
 describe('notebook page 19/06/2026', () => {
   const data = sampleData();
@@ -240,5 +241,63 @@ describe('expenses', () => {
       ['Repairs', 'shift'],
       ['Generator diesel', 'drawer'],
     ]);
+  });
+});
+
+describe('LPG – handwritten page 24/10/2018', () => {
+  function lpgData() {
+    const data = sampleData();
+    const s = sampleLpg();
+    data.settings.lpg = s.settings;
+    data.lpgDays = s.days;
+    return data;
+  }
+
+  it('reproduces the notebook net cash of ₹4,06,148', () => {
+    const data = lpgData();
+    const calc = computeLpgDay(data, data.lpgDays!['2018-10-24']);
+    expect(calc.A).toBe(41017600); // 928 × 442
+    expect(calc.C).toBe(720000); // 4500 + 2700
+    expect(calc.A + calc.C).toBe(41737600); // 4,17,376
+    expect(calc.R).toBe(83200);
+    expect(calc.duePaise).toBe(649600);
+    expect(calc.D).toBe(390000);
+    expect(calc.cashInHandPaise).toBe(40614800); // 4,06,148 net cash
+  });
+
+  it('follows the printed form totals', () => {
+    const data = lpgData();
+    const day = data.lpgDays!['2018-10-24'];
+    day.refills.dom142.onlinePaise = 100000; // ₹1,000 by PhonePe
+    day.items.hose = { ratePaise: 19000, qty: 2, onlinePaise: 19000, duePaise: 0 };
+    day.currentAccountPaise = 500000;
+    day.edfsAccountPaise = 200000;
+    const c = computeLpgDay(data, day);
+    expect(c.B).toBe(38000);
+    expect(c.onlinePaise).toBe(100000 + 19000); // a + b + c
+    expect(c.cashPaise).toBe(c.d + c.e + c.f);
+    expect(c.finalPaise).toBe(c.A + c.B + c.C - c.R - c.D);
+    expect(c.finalBalancePaise).toBe(c.finalPaise + 500000 + 200000);
+    expect(c.hasError).toBe(false);
+  });
+
+  it('tracks cylinder stock and carries it to the next day', () => {
+    const data = lpgData();
+    const c = computeLpgDay(data, data.lpgDays!['2018-10-24']);
+    const dom = c.stock.find((s) => s.cylinder.id === 'dom142')!;
+    // Full: 1050 + 612 received − 928 refills − 2 new connections
+    expect(dom.closeFull).toBe(732);
+    // Empty: 120 + 928 back from refills + 1 TV return − 600 sent
+    expect(dom.closeEmpty).toBe(449);
+    expect(dom.closeDefective).toBe(4);
+    const next = lpgOpeningStock(data, '2018-10-25');
+    expect(next.dom142).toEqual({ full: 732, empty: 449, defective: 4 });
+  });
+
+  it('flags online + due higher than the amount', () => {
+    const data = lpgData();
+    const day = createLpgDay(data, '2018-10-25');
+    day.refills.dom142 = { ratePaise: 44200, qty: 1, onlinePaise: 50000, duePaise: 0 };
+    expect(computeLpgDay(data, day).hasError).toBe(true);
   });
 });
