@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, Banknote, CreditCard, Lock, Plus, Printer, Smartphone, Trash2, Unlock, UserRound } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Banknote, CreditCard, QrCode, Lock, Plus, Printer, Smartphone, Trash2, Unlock, UserRound } from 'lucide-react';
 import { useStore } from '../lib/store';
-import { computeDay, type NozzleRow, type SheetCalc } from '../lib/compute';
+import { computeDay, visibleMethods, type NozzleRow, type SheetCalc } from '../lib/compute';
 import type { Entry, MachineSheet } from '../lib/types';
 import { cn, litresFmt, parseAmountExpr, rupee, uid } from '../lib/util';
 import { Card, DateNav, DiffBadge, Lcd, MoneyInput, ProductTag, toneClass, Empty } from '../components/ui';
 import { QuickAmountList } from '../components/EntryList';
+
+const METHOD_ACCENTS = ['bg-diesel', 'bg-petrol', 'bg-brand', 'bg-ink'];
 
 export default function DaySheet() {
   const { data, date, getDay, updateDay, update, t, toast } = useStore();
@@ -142,6 +144,8 @@ function MachineSheetView({ calc, locked }: { calc: SheetCalc; locked: boolean }
   const { data, date, updateDay, t } = useStore();
   const { machine, sheet } = calc;
   const tol = data.settings.tolerancePaise;
+  const methods = visibleMethods(data.settings, [sheet]);
+  const methodName = (m: { name: string; nameBn: string }) => (data.settings.language === 'bn' && m.nameBn ? m.nameBn : m.name);
 
   const edit = (fn: (s: MachineSheet) => void) =>
     updateDay(date, (day) => {
@@ -241,6 +245,17 @@ function MachineSheetView({ calc, locked }: { calc: SheetCalc; locked: boolean }
               disabled={locked}
               onChange={(next) => edit((s) => (s.card = next))}
             />
+            {methods.map((m, i) => (
+              <QuickAmountList
+                key={m.id}
+                title={methodName(m)}
+                icon={<QrCode className="h-4 w-4" />}
+                accent={METHOD_ACCENTS[i % METHOD_ACCENTS.length]}
+                entries={sheet.extra?.[m.id] ?? []}
+                disabled={locked}
+                onChange={(next) => edit((s) => (s.extra = { ...(s.extra ?? {}), [m.id]: next }))}
+              />
+            ))}
             <DueEditor dues={sheet.dues} locked={locked} onChange={(next) => edit((s) => (s.dues = next))} />
           </div>
           <p className="mt-2 text-[11px] text-ink-3">{t('onlineHint')}</p>
@@ -261,6 +276,7 @@ function MachineSheetView({ calc, locked }: { calc: SheetCalc; locked: boolean }
               [t('cash'), calc.cashPaise],
               [t('online'), calc.onlinePaise],
               [t('card'), calc.cardPaise],
+              ...methods.map((m) => [methodName(m), calc.extraPaise[m.id] ?? 0]),
               [t('due'), calc.duePaise],
             ].map(([label, v]) => (
               <div key={label as string} className="flex justify-between">

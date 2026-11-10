@@ -29,6 +29,14 @@ export interface Machine {
   nozzles: NozzleConfig[];
 }
 
+/** Extra non-cash collection methods the station uses (e.g. PPM, PPS). */
+export interface PaymentMethod {
+  id: string;
+  name: string;
+  nameBn: string;
+  active: boolean;
+}
+
 export interface Settings {
   stationName: string;
   products: Product[];
@@ -38,6 +46,8 @@ export interface Settings {
   tolerancePaise: number;
   language: Lang;
   theme: ThemePref;
+  /** Optional for data saved before this field existed – see paymentMethods(). */
+  paymentMethods?: PaymentMethod[];
 }
 
 export interface NozzleReading {
@@ -62,6 +72,8 @@ export interface MachineSheet {
   online: Entry[];
   card: Entry[];
   dues: Entry[];
+  /** Slips for the extra payment methods, keyed by PaymentMethod.id. */
+  extra?: Record<string, Entry[]>;
   remark: string;
 }
 

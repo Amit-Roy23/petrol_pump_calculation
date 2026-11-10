@@ -1,7 +1,9 @@
 import { Decimal } from 'decimal.js';
 import { calculateNozzleLitres, calculateProductTotals, RoundingMode } from '@petrolpump/shared';
+import { defaultPaymentMethods } from './seed';
 import type {
   AppData,
+  PaymentMethod,
   DayRecord,
   Machine,
   MachineSheet,
@@ -16,6 +18,16 @@ import { isValidReading, sumPaise } from './util';
 export const SUSPICIOUS_LITRES = 5000;
 
 export const NOTE_VALUES = ['2000', '500', '200', '100', '50', '20', '10', '5', '2', '1'] as const;
+
+/** Station's extra payment methods; older saved data gets the defaults (PPM, PPS). */
+export function paymentMethods(settings: Settings): PaymentMethod[] {
+  return settings.paymentMethods ?? defaultPaymentMethods();
+}
+
+/** Methods to show on a sheet: active ones, plus any inactive one that already has slips. */
+export function visibleMethods(settings: Settings, sheets: MachineSheet[]): PaymentMethod[] {
+  return paymentMethods(settings).filter((m) => m.active || sheets.some((s) => (s.extra?.[m.id]?.length ?? 0) > 0));
+}
 
 export type RowStatus = 'empty' | 'ok' | 'error';
 
@@ -47,6 +59,9 @@ export interface SheetCalc {
   onlinePaise: number;
   cardPaise: number;
   duePaise: number;
+  /** PaymentMethod.id → paise for the extra methods (PPM, PPS …). */
+  extraPaise: Record<string, number>;
+  extraTotalPaise: number;
   collectedPaise: number;
   /** collected − sale. Negative = short, positive = excess. */
   diffPaise: number;
@@ -65,6 +80,8 @@ export interface DayCalc {
   onlinePaise: number;
   cardPaise: number;
   duePaise: number;
+  extraPaise: Record<string, number>;
+  extraTotalPaise: number;
   collectedPaise: number;
   diffPaise: number;
   receiptsCashPaise: number;
@@ -108,6 +125,7 @@ export function emptySheet(machine: Machine): MachineSheet {
     online: [],
     card: [],
     dues: [],
+    extra: {},
     remark: '',
   };
 }
@@ -204,7 +222,10 @@ export function computeSheet(data: AppData, day: DayRecord, machine: Machine): S
   const onlinePaise = sumPaise(sheet.online);
   const cardPaise = sumPaise(sheet.card);
   const duePaise = sumPaise(sheet.dues);
-  const collectedPaise = sheet.cashPaise + onlinePaise + cardPaise + duePaise;
+  const extraPaise: Record<string, number> = {};
+  for (const [id, entries] of Object.entries(sheet.extra ?? {})) extraPaise[id] = sumPaise(entries);
+  const extraTotalPaise = Object.values(extraPaise).reduce((a, b) => a + b, 0);
+  const collectedPaise = sheet.cashPaise + onlinePaise + cardPaise + duePaise + extraTotalPaise;
   const filledNozzles = rows.filter((r) => r.status === 'ok').length;
 
   return {
@@ -217,6 +238,8 @@ export function computeSheet(data: AppData, day: DayRecord, machine: Machine): S
     onlinePaise,
     cardPaise,
     duePaise,
+    extraPaise,
+    extraTotalPaise,
     collectedPaise,
     diffPaise: collectedPaise - salePaise,
     filledNozzles,
@@ -261,6 +284,9 @@ export function computeDay(data: AppData, day: DayRecord): DayCalc {
   const cardPaise = add('cardPaise');
   const duePaise = add('duePaise');
   const collectedPaise = add('collectedPaise');
+  const extraTotalPaise = add('extraTotalPaise');
+  const extraPaise: Record<string, number> = {};
+  for (const s of sheets) for (const [id, v] of Object.entries(s.extraPaise)) extraPaise[id] = (extraPaise[id] ?? 0) + v;
 
   const receipts = data.receipts.filter((r) => r.date === day.date);
   const receiptsCashPaise = sumPaise(receipts.filter((r) => r.mode === 'cash'));
@@ -280,6 +306,8 @@ export function computeDay(data: AppData, day: DayRecord): DayCalc {
     onlinePaise,
     cardPaise,
     duePaise,
+    extraPaise,
+    extraTotalPaise,
     collectedPaise,
     diffPaise: collectedPaise - salePaise,
     receiptsCashPaise,

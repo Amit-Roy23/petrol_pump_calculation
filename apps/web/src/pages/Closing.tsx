@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Banknote, Coins, Lock, Printer, Smartphone } from 'lucide-react';
 import { useStore } from '../lib/store';
-import { computeDay, NOTE_VALUES } from '../lib/compute';
+import { computeDay, NOTE_VALUES, visibleMethods } from '../lib/compute';
 import { cn, litresFmt, rupee } from '../lib/util';
 import { Card, DateNav, DiffBadge, Lcd, ProductTag, SectionTitle } from '../components/ui';
 import { LineItemsEditor } from '../components/EntryList';
@@ -13,6 +13,8 @@ export default function Closing() {
   const locked = day.locked;
   const tol = data.settings.tolerancePaise;
   const denoms = day.closing.denominations;
+  const lang = data.settings.language;
+  const methods = visibleMethods(data.settings, Object.values(day.sheets));
 
   const setCount = (note: string, raw: string) =>
     updateDay(date, (d) => {
@@ -157,21 +159,34 @@ export default function Closing() {
             </div>
           </Card>
 
-          <Card className="flex items-center justify-between gap-3 p-4 sm:p-5">
-            <div className="flex items-center gap-3">
-              <span className="grid h-10 w-10 place-items-center rounded-xl bg-cng-soft text-cng">
-                <Smartphone className="h-5 w-5" />
-              </span>
-              <div>
-                <div className="text-sm font-bold">{t('onlineTotal')}</div>
-                {calc.receiptsOnlinePaise > 0 && (
-                  <div className="text-xs text-ink-3">
-                    {rupee(calc.onlinePaise)} + {t('dueReceivedOnline')} {rupee(calc.receiptsOnlinePaise)}
-                  </div>
-                )}
+          <Card className="p-4 sm:p-5">
+            <SectionTitle icon={<Smartphone className="h-5 w-5 text-cng" />} title={t('nonCashTitle')} />
+            <div className="space-y-1.5 text-sm">
+              <div className="flex justify-between">
+                <span className="text-ink-2">{t('online')}</span>
+                <span className="num">{rupee(calc.onlinePaise)}</span>
+              </div>
+              {calc.receiptsOnlinePaise > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-ink-2">{t('dueReceivedOnline')}</span>
+                  <span className="num">{rupee(calc.receiptsOnlinePaise)}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-ink-2">{t('card')}</span>
+                <span className="num">{rupee(calc.cardPaise)}</span>
+              </div>
+              {methods.map((m) => (
+                <div key={m.id} className="flex justify-between">
+                  <span className="text-ink-2">{lang === 'bn' && m.nameBn ? m.nameBn : m.name}</span>
+                  <span className="num">{rupee(calc.extraPaise[m.id] ?? 0)}</span>
+                </div>
+              ))}
+              <div className="flex justify-between border-t border-dashed border-line pt-2 font-bold">
+                <span>{t('total')}</span>
+                <span className="num text-lg">{rupee(calc.totalOnlinePaise + calc.cardPaise + calc.extraTotalPaise)}</span>
               </div>
             </div>
-            <span className="num text-xl font-bold">{rupee(calc.totalOnlinePaise)}</span>
           </Card>
         </div>
       </div>

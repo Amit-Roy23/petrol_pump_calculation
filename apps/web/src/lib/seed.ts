@@ -1,5 +1,5 @@
 import { RoundingMode } from '@petrolpump/shared';
-import type { AppData, Machine, Settings } from './types';
+import type { AppData, Machine, PaymentMethod, Settings } from './types';
 import { uid } from './util';
 
 function machine(id: string, name: string, readings: string[] = ['', '', '', '']): Machine {
@@ -17,6 +17,13 @@ function machine(id: string, name: string, readings: string[] = ['', '', '', '']
   };
 }
 
+export function defaultPaymentMethods(): PaymentMethod[] {
+  return [
+    { id: 'ppm', name: 'PPM', nameBn: 'পিপিএম', active: true },
+    { id: 'pps', name: 'PPS', nameBn: 'পিপিএস', active: true },
+  ];
+}
+
 export function defaultSettings(): Settings {
   return {
     stationName: 'My Fuel Station',
@@ -29,6 +36,7 @@ export function defaultSettings(): Settings {
     tolerancePaise: 1000,
     language: 'en',
     theme: 'system',
+    paymentMethods: defaultPaymentMethods(),
   };
 }
 

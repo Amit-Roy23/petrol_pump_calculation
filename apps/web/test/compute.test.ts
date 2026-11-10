@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeDay, createDay, customerBalances, denominationTotal } from '../src/lib/compute';
+import { computeDay, createDay, customerBalances, denominationTotal, paymentMethods } from '../src/lib/compute';
 import { sampleData, emptyData } from '../src/lib/seed';
 import { parseAmountExpr, splitAmounts } from '../src/lib/util';
 
@@ -75,5 +75,30 @@ describe('input helpers', () => {
   it('new station without history leaves openings blank', () => {
     const d = createDay(emptyData(), '2026-01-01');
     expect(d.sheets.m219.readings['m219-n1'].opening).toBe('');
+  });
+});
+
+describe('extra payment methods (PPM, PPS)', () => {
+  it('count toward collected but not toward cash in the drawer', () => {
+    const data = sampleData();
+    const day = data.days['2026-06-19'];
+    day.sheets.m219.extra = { ppm: [{ id: 'a', amountPaise: 300 }], pps: [{ id: 'b', amountPaise: 130 }] };
+    const calc = computeDay(data, day);
+    const m219 = calc.sheets[0];
+    expect(m219.extraPaise).toEqual({ ppm: 300, pps: 130 });
+    expect(m219.collectedPaise).toBe(2814430);
+    expect(m219.diffPaise).toBe(0); // the ₹4.30 short is now covered
+    expect(calc.extraTotalPaise).toBe(430);
+    expect(calc.expectedCashPaise).toBe(6646000); // unchanged – not cash
+  });
+
+  it('older saved data without the new fields still works and gets PPM/PPS', () => {
+    const data = sampleData();
+    delete data.settings.paymentMethods;
+    for (const s of Object.values(data.days['2026-06-19'].sheets)) delete s.extra;
+    const calc = computeDay(data, data.days['2026-06-19']);
+    expect(calc.sheets[0].diffPaise).toBe(-430);
+    expect(calc.extraTotalPaise).toBe(0);
+    expect(paymentMethods(data.settings).map((m) => m.name)).toEqual(['PPM', 'PPS']);
   });
 });
