@@ -144,14 +144,23 @@ export default function Closing() {
               />
             </div>
             <div className="mt-4">
-              <div className="label">{t('expenses')}</div>
+              <div className="label">{t('paidFromDrawer')}</div>
               <LineItemsEditor
                 items={day.closing.expenses}
                 disabled={locked}
-                placeholder={t('expenses')}
+                placeholder={t('expensePlaceholder')}
                 onChange={(next) => updateDay(date, (d) => (d.closing.expenses = next))}
               />
             </div>
+            {calc.shiftExpensesPaise > 0 && (
+              <div className="mt-3 rounded-xl bg-sunk/70 px-3 py-2.5 text-xs text-ink-2">
+                <div className="flex justify-between font-semibold">
+                  <span>{t('paidByWorkers')}</span>
+                  <span className="num">{rupee(calc.shiftExpensesPaise)}</span>
+                </div>
+                <div className="mt-0.5 text-ink-3">{t('workerExpenseNote')}</div>
+              </div>
+            )}
 
             <div className="mt-4 flex items-center justify-between border-t border-dashed border-line pt-3 font-bold">
               <span>{t('expectedCash')}</span>
