@@ -62,6 +62,7 @@ The web app replaces the notebook page directly. Deployed on Vercel, it stores d
 |---|---|
 | **Today** | Day's total sale in a dispenser-style display, petrol/diesel litres, collected, short/excess per machine, cash-in-drawer check, outstanding dues, last 7 days. |
 | **Meter Sheet** | One tab per machine (219, 285 …). Each nozzle: opening (auto-carried from yesterday's closing), closing, optional test litres → litres. Per product `litres × rate = amount` (notebook rounding), machine total. Collections: cash, P.T.M/UPI slips, card slips, due (credit) per customer, remark. Live short/excess. Lock a finished day. Print. |
+| **Shifts & Staff** | Each machine's day can have 2–3 worker shifts (Meter Sheet → *Add shift*). Each shift has its own worker, timing, readings, money and short/excess; a shift's closing reading becomes the next shift's opening automatically. The **Staff** page shows who is on duty, a monthly attendance grid (shifts per day, litres, short/excess per worker), shift history and CSV export. Shift timings are set in Settings. |
 | **Day Closing** | Note counter (₹2000…₹1 + coins) vs expected cash (machine cash + due received in cash + other cash − expenses). Total online (P.T.M). Day summary table per machine. |
 | **Dues** | Credit customers with running balance (opening due + credit given on sheets − payments received), payment receipt (cash/online), full ledger. |
 | **Reports** | Date range (7d / 30d / month / all / custom), totals, daily sales chart, product share, day-wise table, CSV export, print. |

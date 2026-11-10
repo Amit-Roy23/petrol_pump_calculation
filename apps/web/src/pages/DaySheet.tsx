@@ -1,12 +1,24 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, Banknote, CreditCard, Lock, Plus, Printer, Smartphone, Trash2, Unlock, UserRound } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Banknote, CreditCard, QrCode, Lock, Plus, Printer, Smartphone, Trash2, Unlock, UserRound } from 'lucide-react';
 import { useStore } from '../lib/store';
-import { computeDay, type NozzleRow, type SheetCalc } from '../lib/compute';
-import type { Entry, MachineSheet } from '../lib/types';
+import {
+  addShift,
+  computeDay,
+  ensureShifts,
+  setShiftReading,
+  shiftTemplates,
+  staffList,
+  visibleMethods,
+  type NozzleRow,
+  type SheetCalc,
+} from '../lib/compute';
+import type { AppData, Entry, MachineSheet, ShiftSheet } from '../lib/types';
 import { cn, litresFmt, parseAmountExpr, rupee, uid } from '../lib/util';
 import { Card, DateNav, DiffBadge, Lcd, MoneyInput, ProductTag, toneClass, Empty } from '../components/ui';
 import { QuickAmountList } from '../components/EntryList';
+
+const METHOD_ACCENTS = ['bg-diesel', 'bg-petrol', 'bg-brand', 'bg-ink'];
 
 export default function DaySheet() {
   const { data, date, getDay, updateDay, update, t, toast } = useStore();
@@ -109,6 +121,7 @@ export default function DaySheet() {
                 <div className="num text-sm font-bold">{rupee(s.salePaise)}</div>
                 <div className={cn('text-[11px]', isActive ? 'opacity-70' : 'text-ink-3')}>
                   {s.hasError ? '⚠ ' + t('hasErrors') : `${s.filledNozzles}/${s.rows.length} ${t('nozzlesFilled')}`}
+                  {s.shifts.length > 1 && ` · ${s.shifts.length} ${t('shifts')}`}
                 </div>
               </div>
             </button>
@@ -139,156 +152,436 @@ export default function DaySheet() {
 }
 
 function MachineSheetView({ calc, locked }: { calc: SheetCalc; locked: boolean }) {
-  const { data, date, updateDay, t } = useStore();
-  const { machine, sheet } = calc;
-  const tol = data.settings.tolerancePaise;
+  const { data, date, updateDay, t, toast } = useStore();
+  const { machine } = calc;
+  const settings = data.settings;
+  const tol = settings.tolerancePaise;
+  // Open on the first shift still being filled in, else the last one.
+  const [shiftIdx, setShiftIdx] = useState(() => {
+    const i = calc.shifts.findIndex((sc) => !sc.complete);
+    return i >= 0 ? i : calc.shifts.length - 1;
+  });
+  const idx = Math.min(shiftIdx, calc.shifts.length - 1);
+  const sc = calc.shifts[idx];
+  const shift = sc.shift;
+  const multi = calc.shifts.length > 1;
+  const methods = visibleMethods(settings, [shift]);
+  const methodName = (m: { name: string; nameBn: string }) => (settings.language === 'bn' && m.nameBn ? m.nameBn : m.name);
 
-  const edit = (fn: (s: MachineSheet) => void) =>
-    updateDay(date, (day) => {
-      if (!day.sheets[machine.id]) {
-        day.sheets[machine.id] = { ...structuredClone(calc.sheet) };
-      }
-      fn(day.sheets[machine.id]);
+  /** Edit the machine's day record (created on first edit). */
+  const editSheet = (fn: (sheet: MachineSheet, draft: AppData) => void) =>
+    updateDay(date, (day, draft) => {
+      if (!day.sheets[machine.id]) day.sheets[machine.id] = structuredClone(calc.sheet);
+      const sheet = day.sheets[machine.id];
+      ensureShifts(sheet);
+      fn(sheet, draft);
+    });
+  /** Edit the selected shift. */
+  const edit = (fn: (s: ShiftSheet, draft: AppData) => void) =>
+    editSheet((sheet, draft) => {
+      const sh = sheet.shifts![idx];
+      if (sh) fn(sh, draft);
     });
 
   const setReading = (nozzleId: string, field: 'opening' | 'closing' | 'testing', value: string) =>
-    edit((s) => {
-      const cur = s.readings[nozzleId] ?? { opening: '', closing: '', testing: '' };
-      s.readings[nozzleId] = { ...cur, [field]: value.replace(/[^\d.]/g, '') };
+    editSheet((sheet) => setShiftReading(sheet, idx, nozzleId, field, value.replace(/[^\d.]/g, '')));
+
+  const onAddShift = () => {
+    const last = calc.shifts[calc.shifts.length - 1];
+    if (last && last.filledNozzles < last.rows.length) toast(t('addShiftHint'), 'warn');
+    editSheet((sheet, draft) => {
+      addShift(draft.settings, sheet, machine);
+    });
+    setShiftIdx(calc.shifts.length);
+  };
+
+  const onRemoveShift = () => {
+    if (!multi || !confirm(t('confirmRemoveShift'))) return;
+    const before = structuredClone(calc.sheet.shifts ?? []);
+    editSheet((sheet) => {
+      sheet.shifts!.splice(idx, 1);
+    });
+    setShiftIdx(Math.max(0, idx - 1));
+    toast(`${t('removed')} ${sc.label}`, 'ok', {
+      label: t('undo'),
+      run: () =>
+        editSheet((sheet) => {
+          sheet.shifts = before;
+        }),
+    });
+  };
+
+  /** Pick a worker by name; known names link to the staff list, new names are added to it. */
+  const setWorker = (name: string) =>
+    edit((sh, draft) => {
+      const clean = name.trim();
+      sh.attendant = clean;
+      if (!clean) {
+        sh.staffId = '';
+        return;
+      }
+      draft.settings.staff = draft.settings.staff ?? [];
+      let st = draft.settings.staff.find((x) => x.name.trim().toLowerCase() === clean.toLowerCase());
+      if (!st) {
+        st = { id: uid(), name: clean, phone: '', active: true };
+        draft.settings.staff.push(st);
+      }
+      sh.staffId = st.id;
+      sh.attendant = st.name;
     });
 
+  const templates = shiftTemplates(settings);
+
   return (
-    <div className="grid items-start gap-5 xl:grid-cols-[1.5fr_1fr]">
-      {/* Readings */}
-      <Card className="paper overflow-hidden">
-        <div className="flex items-center justify-between border-b border-line bg-surface px-4 py-3 sm:px-5">
-          <div className="font-display font-bold">
-            {t('readingsTitle')} · <span className="text-brand">{machine.name}</span>
-          </div>
-          <input
-            className="input w-40 py-1.5 text-sm sm:w-48"
-            placeholder={t('attendant')}
-            value={sheet.attendant}
-            disabled={locked}
-            onChange={(e) => edit((s) => (s.attendant = e.target.value))}
-          />
-        </div>
+    <div className="space-y-4">
+      {/* Shift tabs */}
+      <div className="no-print flex items-stretch gap-2 overflow-x-auto pb-1">
+        {calc.shifts.map((x, i) => {
+          const on = i === idx;
+          return (
+            <button
+              key={x.shift.id}
+              onClick={() => setShiftIdx(i)}
+              className={cn(
+                'flex min-w-[168px] shrink-0 flex-col gap-1 rounded-xl border px-3 py-2 text-left transition',
+                on ? 'border-brand bg-brand-soft/60 ring-2 ring-brand/20' : 'border-line bg-surface hover:border-ink-3'
+              )}
+            >
+              <span className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5 text-sm font-bold">
+                  <span className={cn('grid h-5 w-5 place-items-center rounded-full text-[10px] font-extrabold', x.complete ? 'bg-ok text-white' : on ? 'bg-brand text-brand-ink' : 'bg-sunk text-ink-2')}>
+                    {x.complete ? '✓' : i + 1}
+                  </span>
+                  {x.label}
+                </span>
+                {x.shift.start && (
+                  <span className="num text-[10px] text-ink-3">
+                    {x.shift.start}–{x.shift.end}
+                  </span>
+                )}
+              </span>
+              <span className="flex items-center justify-between gap-2 text-xs">
+                <span className={cn('flex items-center gap-1 truncate', x.staffName ? 'text-ink-2' : 'italic text-ink-3')}>
+                  <UserRound className="h-3 w-3 shrink-0" />
+                  {x.staffName || t('noWorker')}
+                </span>
+                {x.collectedPaise > 0 && x.salePaise > 0 ? (
+                  <span className={cn('num font-semibold', x.diffPaise === 0 ? 'text-ok' : Math.abs(x.diffPaise) <= tol ? 'text-warn' : 'text-bad')}>
+                    {x.diffPaise === 0 ? '✓' : rupee(x.diffPaise, { sign: true })}
+                  </span>
+                ) : (
+                  <span className="num text-ink-3">{rupee(x.salePaise)}</span>
+                )}
+              </span>
+            </button>
+          );
+        })}
+        {!locked && (
+          <button onClick={onAddShift} className="flex min-w-[120px] shrink-0 items-center justify-center gap-1.5 rounded-xl border border-dashed border-ink-3/50 px-3 py-2 text-sm font-semibold text-ink-2 hover:border-brand hover:text-brand">
+            <Plus className="h-4 w-4" /> {t('addShift')}
+          </button>
+        )}
+      </div>
 
-        <div className="hidden grid-cols-[96px_1fr_1fr_64px_104px] gap-3 border-b border-line bg-sunk px-5 py-2 text-[11px] font-semibold uppercase tracking-wider text-ink-3 md:grid">
-          <span>{t('nozzle')}</span>
-          <span>{t('opening')}</span>
-          <span>{t('closing')}</span>
-          <span>{t('testing')}</span>
-          <span className="text-right">{t('litres')}</span>
-        </div>
-
-        <div className="divide-y divide-line bg-surface/80">
-          {calc.rows.map((row) => (
-            <NozzleRowView key={row.nozzle.id} row={row} locked={locked} onChange={setReading} />
-          ))}
-        </div>
-
-        {/* Product subtotals – the "121.77 × 100.45 = 12,231.79" lines */}
-        <div className="space-y-2 border-t border-line bg-sunk/70 px-4 py-4 sm:px-5">
-          {calc.products.map((pl) => (
-            <div key={pl.product.id} className={cn('flex flex-wrap items-center justify-between gap-2 rounded-xl border-l-4 bg-surface px-3 py-2.5', toneClass[pl.product.tone].bar)}>
-              <div className="flex items-center gap-2">
-                <ProductTag product={pl.product} />
-              </div>
-              <div className="num flex flex-wrap items-center gap-x-2 text-sm">
-                <span className="font-bold">{litresFmt(pl.litresCenti)} L</span>
-                <span className="text-ink-3">×</span>
-                <span>{rupee(pl.ratePaise, { symbol: false })}</span>
-                <span className="text-ink-3">=</span>
-                <span className="text-base font-bold">{rupee(pl.amountPaise)}</span>
-              </div>
+      <div className="grid items-start gap-5 xl:grid-cols-[1.5fr_1fr]">
+        {/* Readings */}
+        <Card className="paper overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-surface px-4 py-3 sm:px-5">
+            <div className="font-display font-bold">
+              {t('readingsTitle')} · <span className="text-brand">{machine.name}</span>
+              {multi && <span className="text-ink-3"> · {sc.label}</span>}
             </div>
-          ))}
-          <div className="flex items-center justify-between gap-3 pt-2">
-            <span className="font-display text-sm font-bold uppercase tracking-wider text-ink-2">{t('machineTotal')}</span>
-            <Lcd value={rupee(calc.salePaise)} size="md" ghost={calc.salePaise === 0} />
-          </div>
-        </div>
-      </Card>
-
-      {/* Collections */}
-      <div className="space-y-4">
-        <Card className="p-4 sm:p-5">
-          <div className="mb-3 font-display font-bold">{t('collectionsTitle')}</div>
-
-          <div className="mb-5">
-            <span className="label flex items-center gap-1.5">
-              <Banknote className="h-3.5 w-3.5" /> {t('cash')}
-            </span>
-            <MoneyInput value={sheet.cashPaise} disabled={locked} onCommit={(v) => edit((s) => (s.cashPaise = v))} className="[&_input]:py-3 [&_input]:text-lg [&_input]:font-bold" ariaLabel={t('cash')} />
-            <span className="mt-1 block text-[11px] text-ink-3">{t('cashHint')}</span>
+            <WorkerInput key={shift.id} value={sc.staffName} disabled={locked} onCommit={setWorker} />
           </div>
 
-          <div className="space-y-3">
-            <QuickAmountList
-              title={t('online')}
-              icon={<Smartphone className="h-4 w-4" />}
-              accent="bg-cng"
-              entries={sheet.online}
+          {/* Shift details */}
+          <div className="flex flex-wrap items-center gap-2 border-b border-line bg-sunk/60 px-4 py-2.5 text-sm sm:px-5">
+            <span className="label mb-0">{t('shift')}</span>
+            <select
+              className="input w-auto py-1.5 text-sm"
+              value={shift.templateId}
               disabled={locked}
-              onChange={(next) => edit((s) => (s.online = next))}
-            />
-            <QuickAmountList
-              title={t('card')}
-              icon={<CreditCard className="h-4 w-4" />}
-              accent="bg-premium"
-              entries={sheet.card}
-              disabled={locked}
-              onChange={(next) => edit((s) => (s.card = next))}
-            />
-            <DueEditor dues={sheet.dues} locked={locked} onChange={(next) => edit((s) => (s.dues = next))} />
+              onChange={(e) =>
+                edit((sh) => {
+                  const tpl = templates.find((x) => x.id === e.target.value);
+                  sh.templateId = tpl?.id ?? '';
+                  sh.label = tpl?.name ?? sh.label;
+                  if (tpl) {
+                    sh.start = tpl.start;
+                    sh.end = tpl.end;
+                  }
+                })
+              }
+              aria-label={t('shift')}
+            >
+              <option value="">{`${t('shift')} ${idx + 1}`}</option>
+              {templates.map((tp) => (
+                <option key={tp.id} value={tp.id}>
+                  {settings.language === 'bn' && tp.nameBn ? tp.nameBn : tp.name}
+                </option>
+              ))}
+            </select>
+            <input type="time" className="input num w-auto py-1.5 text-sm" value={shift.start} disabled={locked} onChange={(e) => edit((sh) => (sh.start = e.target.value))} aria-label={t('shiftStart')} />
+            <span className="text-ink-3">–</span>
+            <input type="time" className="input num w-auto py-1.5 text-sm" value={shift.end} disabled={locked} onChange={(e) => edit((sh) => (sh.end = e.target.value))} aria-label={t('shiftEnd')} />
+            {multi && !locked && (
+              <button className="btn-quiet ml-auto px-2 text-xs hover:text-bad" onClick={onRemoveShift}>
+                <Trash2 className="h-3.5 w-3.5" /> {t('removeShift')}
+              </button>
+            )}
           </div>
-          <p className="mt-2 text-[11px] text-ink-3">{t('onlineHint')}</p>
 
-          <input
-            className="input mt-4 text-sm"
-            placeholder={t('remark')}
-            value={sheet.remark}
-            disabled={locked}
-            onChange={(e) => edit((s) => (s.remark = e.target.value))}
-          />
-        </Card>
+          <div className="hidden grid-cols-[96px_1fr_1fr_64px_104px] gap-3 border-b border-line bg-sunk px-5 py-2 text-[11px] font-semibold uppercase tracking-wider text-ink-3 md:grid">
+            <span>{t('nozzle')}</span>
+            <span>{t('opening')}</span>
+            <span>{t('closing')}</span>
+            <span>{t('testing')}</span>
+            <span className="text-right">{t('litres')}</span>
+          </div>
 
-        {/* Reconciliation */}
-        <Card className="overflow-hidden">
-          <div className="space-y-1.5 px-4 py-4 text-sm sm:px-5">
-            {[
-              [t('cash'), calc.cashPaise],
-              [t('online'), calc.onlinePaise],
-              [t('card'), calc.cardPaise],
-              [t('due'), calc.duePaise],
-            ].map(([label, v]) => (
-              <div key={label as string} className="flex justify-between">
-                <span className="text-ink-2">{label}</span>
-                <span className="num">{rupee(v as number)}</span>
+          <div className="divide-y divide-line bg-surface/80">
+            {sc.rows.map((row) => (
+              <NozzleRowView key={row.nozzle.id} row={row} locked={locked} onChange={setReading} />
+            ))}
+          </div>
+
+          {/* Product subtotals – the "121.77 × 100.45 = 12,231.79" lines */}
+          <div className="space-y-2 border-t border-line bg-sunk/70 px-4 py-4 sm:px-5">
+            {sc.products.map((pl) => (
+              <div key={pl.product.id} className={cn('flex flex-wrap items-center justify-between gap-2 rounded-xl border-l-4 bg-surface px-3 py-2.5', toneClass[pl.product.tone].bar)}>
+                <div className="flex items-center gap-2">
+                  <ProductTag product={pl.product} />
+                </div>
+                <div className="num flex flex-wrap items-center gap-x-2 text-sm">
+                  <span className="font-bold">{litresFmt(pl.litresCenti)} L</span>
+                  <span className="text-ink-3">×</span>
+                  <span>{rupee(pl.ratePaise, { symbol: false })}</span>
+                  <span className="text-ink-3">=</span>
+                  <span className="text-base font-bold">{rupee(pl.amountPaise)}</span>
+                </div>
               </div>
             ))}
-            <div className="flex justify-between border-t border-dashed border-line pt-2 font-bold">
-              <span>{t('collected')}</span>
-              <span className="num">{rupee(calc.collectedPaise)}</span>
+            <div className="flex items-center justify-between gap-3 pt-2">
+              <span className="font-display text-sm font-bold uppercase tracking-wider text-ink-2">{multi ? t('shiftTotal') : t('machineTotal')}</span>
+              <Lcd value={rupee(sc.salePaise)} size="md" ghost={sc.salePaise === 0} />
             </div>
-            <div className="flex justify-between font-bold">
-              <span>{t('sale')}</span>
-              <span className="num">{rupee(calc.salePaise)}</span>
-            </div>
-          </div>
-          <div
-            className={cn(
-              'flex items-center justify-between gap-3 px-4 py-3 sm:px-5',
-              calc.diffPaise === 0 ? 'bg-ok-soft' : Math.abs(calc.diffPaise) <= tol ? 'bg-warn-soft' : 'bg-bad-soft'
-            )}
-          >
-            <span className="text-sm font-semibold">{calc.complete ? t('status') : t('incomplete')}</span>
-            {calc.salePaise > 0 || calc.collectedPaise > 0 ? <DiffBadge paise={calc.diffPaise} tolerance={tol} size="lg" /> : <span className="text-sm text-ink-3">—</span>}
           </div>
         </Card>
+
+        {/* Collections */}
+        <div className="space-y-4">
+          <Card className="p-4 sm:p-5">
+            <div className="mb-3 font-display font-bold">
+              {t('collectionsTitle')}
+              {multi && <span className="text-ink-3"> · {sc.label}</span>}
+            </div>
+
+            <div className="mb-5">
+              <span className="label flex items-center gap-1.5">
+                <Banknote className="h-3.5 w-3.5" /> {t('cash')}
+              </span>
+              <MoneyInput key={shift.id} value={shift.cashPaise} disabled={locked} onCommit={(v) => edit((s) => (s.cashPaise = v))} className="[&_input]:py-3 [&_input]:text-lg [&_input]:font-bold" ariaLabel={t('cash')} />
+              <span className="mt-1 block text-[11px] text-ink-3">{t('cashHint')}</span>
+            </div>
+
+            <div className="space-y-3">
+              <QuickAmountList
+                key={`on-${shift.id}`}
+                title={t('online')}
+                icon={<Smartphone className="h-4 w-4" />}
+                accent="bg-cng"
+                entries={shift.online}
+                disabled={locked}
+                onChange={(next) => edit((s) => (s.online = next))}
+              />
+              <QuickAmountList
+                key={`card-${shift.id}`}
+                title={t('card')}
+                icon={<CreditCard className="h-4 w-4" />}
+                accent="bg-premium"
+                entries={shift.card}
+                disabled={locked}
+                onChange={(next) => edit((s) => (s.card = next))}
+              />
+              {methods.map((m, i) => (
+                <QuickAmountList
+                  key={`${m.id}-${shift.id}`}
+                  title={methodName(m)}
+                  icon={<QrCode className="h-4 w-4" />}
+                  accent={METHOD_ACCENTS[i % METHOD_ACCENTS.length]}
+                  entries={shift.extra?.[m.id] ?? []}
+                  disabled={locked}
+                  onChange={(next) => edit((s) => (s.extra = { ...(s.extra ?? {}), [m.id]: next }))}
+                />
+              ))}
+              <DueEditor key={`due-${shift.id}`} dues={shift.dues} locked={locked} onChange={(next) => edit((s) => (s.dues = next))} />
+            </div>
+            <p className="mt-2 text-[11px] text-ink-3">{t('onlineHint')}</p>
+
+            <input
+              className="input mt-4 text-sm"
+              placeholder={t('remark')}
+              value={shift.remark}
+              disabled={locked}
+              onChange={(e) => edit((s) => (s.remark = e.target.value))}
+            />
+          </Card>
+
+          {/* Reconciliation for this shift */}
+          <Card className="overflow-hidden">
+            <div className="space-y-1.5 px-4 py-4 text-sm sm:px-5">
+              {[
+                [t('cash'), sc.cashPaise],
+                [t('online'), sc.onlinePaise],
+                [t('card'), sc.cardPaise],
+                ...methods.map((m) => [methodName(m), sc.extraPaise[m.id] ?? 0]),
+                [t('due'), sc.duePaise],
+              ].map(([label, v]) => (
+                <div key={label as string} className="flex justify-between">
+                  <span className="text-ink-2">{label}</span>
+                  <span className="num">{rupee(v as number)}</span>
+                </div>
+              ))}
+              <div className="flex justify-between border-t border-dashed border-line pt-2 font-bold">
+                <span>{t('collected')}</span>
+                <span className="num">{rupee(sc.collectedPaise)}</span>
+              </div>
+              <div className="flex justify-between font-bold">
+                <span>{t('sale')}</span>
+                <span className="num">{rupee(sc.salePaise)}</span>
+              </div>
+            </div>
+            <div
+              className={cn(
+                'flex items-center justify-between gap-3 px-4 py-3 sm:px-5',
+                sc.diffPaise === 0 ? 'bg-ok-soft' : Math.abs(sc.diffPaise) <= tol ? 'bg-warn-soft' : 'bg-bad-soft'
+              )}
+            >
+              <span className="text-sm font-semibold">
+                {sc.complete ? t('status') : t('incomplete')}
+                {sc.staffName && <span className="font-normal text-ink-2"> · {sc.staffName}</span>}
+              </span>
+              {sc.salePaise > 0 || sc.collectedPaise > 0 ? <DiffBadge paise={sc.diffPaise} tolerance={tol} size="lg" /> : <span className="text-sm text-ink-3">—</span>}
+            </div>
+          </Card>
         </div>
+      </div>
+
+      {multi && <ShiftsSummary calc={calc} activeIndex={idx} onPick={setShiftIdx} />}
     </div>
+  );
+}
+
+/** Machine's whole day, one row per worker shift. */
+function ShiftsSummary({ calc, activeIndex, onPick }: { calc: SheetCalc; activeIndex: number; onPick: (i: number) => void }) {
+  const { data, t } = useStore();
+  const tol = data.settings.tolerancePaise;
+  return (
+    <Card className="overflow-hidden">
+      <div className="flex items-center justify-between border-b border-line px-4 py-3 sm:px-5">
+        <span className="font-display font-bold">
+          {t('allShifts')} · <span className="text-brand">{calc.machine.name}</span>
+        </span>
+        <span className="text-xs text-ink-3">
+          {calc.shifts.length} {t('shifts')}
+        </span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[620px] text-sm">
+          <thead className="bg-sunk text-[11px] uppercase tracking-wider text-ink-3">
+            <tr>
+              <th className="px-4 py-2 text-left sm:px-5">{t('shift')}</th>
+              <th className="px-3 py-2 text-left">{t('worker')}</th>
+              {calc.products.map((p) => (
+                <th key={p.product.id} className="px-3 py-2 text-right">
+                  <ProductTag product={p.product} />
+                </th>
+              ))}
+              <th className="px-3 py-2 text-right">{t('sale')}</th>
+              <th className="px-3 py-2 text-right">{t('collected')}</th>
+              <th className="px-4 py-2 text-right sm:px-5">{t('kpiDiff')}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {calc.shifts.map((x, i) => (
+              <tr key={x.shift.id} onClick={() => onPick(i)} className={cn('cursor-pointer hover:bg-sunk/60', i === activeIndex && 'bg-brand-soft/40')}>
+                <td className="px-4 py-2.5 sm:px-5">
+                  <div className="font-semibold">{x.label}</div>
+                  {x.shift.start && (
+                    <div className="num text-[11px] text-ink-3">
+                      {x.shift.start}–{x.shift.end}
+                    </div>
+                  )}
+                </td>
+                <td className={cn('px-3 py-2.5', !x.staffName && 'italic text-ink-3')}>{x.staffName || t('noWorker')}</td>
+                {calc.products.map((p) => {
+                  const pl = x.products.find((y) => y.product.id === p.product.id);
+                  return (
+                    <td key={p.product.id} className="num px-3 py-2.5 text-right">
+                      {litresFmt(pl?.litresCenti ?? 0)} L
+                    </td>
+                  );
+                })}
+                <td className="num px-3 py-2.5 text-right">{rupee(x.salePaise)}</td>
+                <td className="num px-3 py-2.5 text-right">{rupee(x.collectedPaise)}</td>
+                <td className="px-4 py-2.5 text-right sm:px-5">
+                  {x.salePaise || x.collectedPaise ? <DiffBadge paise={x.diffPaise} tolerance={tol} /> : <span className="text-ink-3">—</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot className="border-t-2 border-line bg-sunk/60 font-bold">
+            <tr>
+              <td className="px-4 py-3 sm:px-5" colSpan={2}>
+                {t('machineTotal')}
+              </td>
+              {calc.products.map((p) => (
+                <td key={p.product.id} className="num px-3 py-3 text-right">
+                  {litresFmt(p.litresCenti)} L
+                </td>
+              ))}
+              <td className="num px-3 py-3 text-right">{rupee(calc.salePaise)}</td>
+              <td className="num px-3 py-3 text-right">{rupee(calc.collectedPaise)}</td>
+              <td className="px-4 py-3 text-right sm:px-5">
+                <DiffBadge paise={calc.diffPaise} tolerance={tol * calc.shifts.length} />
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+/** Worker name with suggestions from the staff list; commits on blur / Enter. */
+function WorkerInput({ value, disabled, onCommit }: { value: string; disabled: boolean; onCommit: (name: string) => void }) {
+  const { data, t } = useStore();
+  const [text, setText] = useState(value);
+  useEffect(() => setText(value), [value]);
+  const staff = staffList(data.settings).filter((x) => x.active);
+  const commit = () => {
+    if (text.trim() !== value.trim()) onCommit(text);
+  };
+  return (
+    <label className="relative flex items-center">
+      <UserRound className="pointer-events-none absolute left-3 h-4 w-4 text-ink-3" />
+      <input
+        className="input w-44 py-1.5 pl-9 text-sm font-semibold sm:w-52"
+        list="staff-names"
+        placeholder={t('selectWorker')}
+        value={text}
+        disabled={disabled}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+        aria-label={t('worker')}
+      />
+      <datalist id="staff-names">
+        {staff.map((x) => (
+          <option key={x.id} value={x.name} />
+        ))}
+      </datalist>
+    </label>
   );
 }
 

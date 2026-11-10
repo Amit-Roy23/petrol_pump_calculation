@@ -140,7 +140,9 @@ export default function Dashboard() {
                   <div>
                     <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-3">{t('machine')}</div>
                     <div className="font-display text-2xl font-extrabold">{s.machine.name}</div>
-                    {s.sheet.attendant && <div className="text-xs text-ink-3">{s.sheet.attendant}</div>}
+                    {s.shifts.some((x) => x.staffName) && (
+                      <div className="text-xs text-ink-3">{s.shifts.map((x) => x.staffName || '—').join(' → ')}</div>
+                    )}
                   </div>
                   <div className="flex gap-1" aria-label={`${s.filledNozzles}/${s.rows.length}`}>
                     {s.rows.map((r) => (
