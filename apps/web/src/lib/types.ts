@@ -68,6 +68,8 @@ export interface Settings {
   /** Optional for older data – see staffList() / shiftTemplates(). */
   staff?: Staff[];
   shiftTemplates?: ShiftTemplate[];
+  /** LPG business setup (optional for older data – see lpgSettings()). */
+  lpg?: LpgSettings;
 }
 
 export interface NozzleReading {
@@ -166,10 +168,105 @@ export interface DueReceipt {
   note: string;
 }
 
+/* ---------------- LPG business ---------------- */
+
+export type Business = 'petrol' | 'lpg';
+
+/** A cylinder size the LPG agency handles, e.g. Domestic 14.2 kg. */
+export interface LpgCylinder {
+  id: string;
+  name: string;
+  nameBn: string;
+  /** Default refill price in paise, copied into each new day. */
+  refillRatePaise: number;
+  active: boolean;
+  /** Stock on the first day the app is used. */
+  openingFull: number;
+  openingEmpty: number;
+  openingDefective: number;
+}
+
+/** Accessory sold at the counter: Oven, Hose, DPR, Others. */
+export interface LpgItem {
+  id: string;
+  name: string;
+  nameBn: string;
+  ratePaise: number;
+  active: boolean;
+}
+
+export interface LpgSettings {
+  businessName: string;
+  cylinders: LpgCylinder[];
+  items: LpgItem[];
+  /** Usual new-connection charge, pre-filled when adding one. */
+  newConnectionRatePaise: number;
+}
+
+/**
+ * Quantity sold at one rate. Online (PhonePe) and due are entered as money;
+ * cash is what's left: qty × rate − online − due.
+ */
+export interface LpgQtyRow {
+  ratePaise: number;
+  qty: number;
+  onlinePaise: number;
+  duePaise: number;
+}
+
+export type LpgPayMode = 'cash' | 'online' | 'due';
+
+/** New connection or TV-in (transfer voucher in), one per customer. */
+export interface LpgConnection {
+  id: string;
+  kind: 'new' | 'tvin';
+  cylinderId: string;
+  amountPaise: number;
+  mode: LpgPayMode;
+  note: string;
+}
+
+/** TV return / termination: deposit refunded to a customer who surrenders a cylinder. */
+export interface LpgRefund {
+  id: string;
+  cylinderId: string;
+  amountPaise: number;
+  note: string;
+}
+
+/** Cylinder movements other than sales, per cylinder type. */
+export interface LpgStockMove {
+  /** Full cylinders received from the plant (truck in). */
+  received: number;
+  /** Empty cylinders sent back to the plant. */
+  emptySent: number;
+  /** Full cylinders found defective (leak etc.). */
+  defectiveFound: number;
+  /** Defective cylinders returned to the plant. */
+  defectiveSent: number;
+}
+
+export interface LpgDay {
+  date: string;
+  refills: Record<string, LpgQtyRow>; // cylinderId → row
+  items: Record<string, LpgQtyRow>; // itemId → row
+  connections: LpgConnection[];
+  refunds: LpgRefund[];
+  costs: LineItem[];
+  stock: Record<string, LpgStockMove>;
+  currentAccountPaise: number;
+  edfsAccountPaise: number;
+  remark: string;
+  locked: boolean;
+  updatedAt: string;
+}
+
 export interface AppData {
   version: 1;
   settings: Settings;
   days: Record<string, DayRecord>;
   customers: Customer[];
   receipts: DueReceipt[];
+  /** LPG business days (optional for data saved before LPG existed). */
+  lpgDays?: Record<string, LpgDay>;
 }

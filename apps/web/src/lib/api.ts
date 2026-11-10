@@ -1,4 +1,4 @@
-import type { AppData, Customer, DayRecord, DueReceipt, Settings } from './types';
+import type { AppData, Customer, DayRecord, DueReceipt, LpgDay, Settings } from './types';
 
 export interface Health {
   ok: boolean;
@@ -12,6 +12,8 @@ export interface ServerSnapshot {
   customers: Customer[];
   receipts: DueReceipt[];
   days: Record<string, DayRecord>;
+  /** Missing from servers deployed before LPG existed. */
+  lpgDays?: Record<string, LpgDay>;
 }
 
 export interface Patch {
@@ -20,6 +22,8 @@ export interface Patch {
   receipts?: DueReceipt[];
   days?: DayRecord[];
   deleteDays?: string[];
+  lpgDays?: LpgDay[];
+  deleteLpgDays?: string[];
 }
 
 export class ApiError extends Error {
@@ -99,13 +103,18 @@ export interface SyncedState {
   customers: string;
   receipts: string;
   days: Record<string, string>;
+  /** Optional: sync state saved before LPG existed has none. */
+  lpgDays?: Record<string, string>;
 }
 
 export function snapshotOf(data: AppData, rev: number): SyncedState {
   const days: Record<string, string> = {};
   for (const [d, rec] of Object.entries(data.days)) days[d] = JSON.stringify(rec);
+  const lpgDays: Record<string, string> = {};
+  for (const [d, rec] of Object.entries(data.lpgDays ?? {})) lpgDays[d] = JSON.stringify(rec);
   return {
     rev,
+    lpgDays,
     settings: settingsKey(data.settings),
     customers: JSON.stringify(data.customers),
     receipts: JSON.stringify(data.receipts),
@@ -124,6 +133,14 @@ export function diff(data: AppData, synced: SyncedState): Patch | null {
   if (changedDays.length) patch.days = changedDays;
   const deleted = Object.keys(synced.days).filter((d) => !data.days[d]);
   if (deleted.length) patch.deleteDays = deleted;
+  const syncedLpg = synced.lpgDays ?? {};
+  const lpg = data.lpgDays ?? {};
+  const changedLpg = Object.entries(lpg)
+    .filter(([d, rec]) => syncedLpg[d] !== JSON.stringify(rec))
+    .map(([, rec]) => rec);
+  if (changedLpg.length) patch.lpgDays = changedLpg;
+  const deletedLpg = Object.keys(syncedLpg).filter((d) => !lpg[d]);
+  if (deletedLpg.length) patch.deleteLpgDays = deletedLpg;
   return Object.keys(patch).length ? patch : null;
 }
 
@@ -135,5 +152,6 @@ export function fromServer(s: ServerSnapshot, local: AppData): AppData {
     days: s.days,
     customers: s.customers,
     receipts: s.receipts,
+    lpgDays: s.lpgDays ?? {},
   };
 }

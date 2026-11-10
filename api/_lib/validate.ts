@@ -28,5 +28,15 @@ export function parsePatch(body: unknown): { patch?: Patch; error?: string } {
     if (!Array.isArray(arr) || !arr.every((d) => typeof d === 'string' && DATE.test(d))) return { error: 'Invalid deleteDays' };
     patch.deleteDays = arr as string[];
   }
+  if (body.lpgDays !== undefined) {
+    const arr = body.lpgDays;
+    if (!Array.isArray(arr) || !arr.every((d) => isObj(d) && typeof d.date === 'string' && DATE.test(d.date))) return { error: 'Invalid lpgDays' };
+    patch.lpgDays = arr as Json[];
+  }
+  if (body.deleteLpgDays !== undefined) {
+    const arr = body.deleteLpgDays;
+    if (!Array.isArray(arr) || !arr.every((d) => typeof d === 'string' && DATE.test(d))) return { error: 'Invalid deleteLpgDays' };
+    patch.deleteLpgDays = arr as string[];
+  }
   return { patch };
 }

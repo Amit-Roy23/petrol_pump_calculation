@@ -9,6 +9,8 @@ export interface Snapshot {
   customers: Json[];
   receipts: Json[];
   days: Record<string, Json>;
+  /** LPG business days, keyed by date. */
+  lpgDays: Record<string, Json>;
 }
 
 export interface Patch {
@@ -17,6 +19,8 @@ export interface Patch {
   receipts?: Json[];
   days?: Json[];
   deleteDays?: string[];
+  lpgDays?: Json[];
+  deleteLpgDays?: string[];
 }
 
 export interface Store {
@@ -69,7 +73,11 @@ export function mongoStore(): Store {
     },
     async snapshot() {
       const d = await db();
-      const [kv, days] = await Promise.all([d.collection<KvDoc>('kv').find({}).toArray(), d.collection<DayDoc>('days').find({}).toArray()]);
+      const [kv, days, lpgDays] = await Promise.all([
+        d.collection<KvDoc>('kv').find({}).toArray(),
+        d.collection<DayDoc>('days').find({}).toArray(),
+        d.collection<DayDoc>('lpg_days').find({}).toArray(),
+      ]);
       const get = (id: string) => kv.find((x) => x._id === id)?.value;
       const out: Snapshot = {
         rev: (get('meta') as { rev?: number } | undefined)?.rev ?? 0,
@@ -77,8 +85,10 @@ export function mongoStore(): Store {
         customers: (get('customers') as Json[]) ?? [],
         receipts: (get('receipts') as Json[]) ?? [],
         days: {},
+        lpgDays: {},
       };
       for (const day of days) out.days[day._id] = day.value;
+      for (const day of lpgDays) out.lpgDays[day._id] = day.value;
       return out;
     },
     async apply(patch) {
@@ -96,6 +106,13 @@ export function mongoStore(): Store {
         ...(patch.deleteDays ?? []).map((date) => ({ deleteOne: { filter: { _id: date } } })),
       ];
       if (writes.length) ops.push(d.collection<DayDoc>('days').bulkWrite(writes, { ordered: false }));
+      const lpgWrites = [
+        ...(patch.lpgDays ?? []).map((day) => ({
+          replaceOne: { filter: { _id: String(day.date) }, replacement: { value: day, updatedAt: now }, upsert: true },
+        })),
+        ...(patch.deleteLpgDays ?? []).map((date) => ({ deleteOne: { filter: { _id: date } } })),
+      ];
+      if (lpgWrites.length) ops.push(d.collection<DayDoc>('lpg_days').bulkWrite(lpgWrites, { ordered: false }));
       await Promise.all(ops);
       const meta = await kv.findOneAndUpdate(
         { _id: 'meta' },
@@ -110,7 +127,7 @@ export function mongoStore(): Store {
 /* ---------------- In-memory implementation (tests / local) ---------------- */
 
 export function memoryStore(): Store {
-  const s: Snapshot = { rev: 0, settings: null, customers: [], receipts: [], days: {} };
+  const s: Snapshot = { rev: 0, settings: null, customers: [], receipts: [], days: {}, lpgDays: {} };
   return {
     async rev() {
       return s.rev;
@@ -124,6 +141,8 @@ export function memoryStore(): Store {
       if (p.receipts !== undefined) s.receipts = structuredClone(p.receipts);
       for (const day of p.days ?? []) s.days[String(day.date)] = structuredClone(day);
       for (const date of p.deleteDays ?? []) delete s.days[date];
+      for (const day of p.lpgDays ?? []) s.lpgDays[String(day.date)] = structuredClone(day);
+      for (const date of p.deleteLpgDays ?? []) delete s.lpgDays[date];
       return ++s.rev;
     },
   };

@@ -88,7 +88,20 @@ describe('api', () => {
     expect((await call(data, { token, url: '/api/data?rev=1' })).body.rev).toBe(2);
   });
 
-  it('validates the patch shape', async () => {
+  it('stores LPG days separately from petrol days', async () => {
+    const { token } = issueToken();
+    await call(data, { method: 'PUT', token, body: { lpgDays: [{ date: '2026-11-10', refills: {} }], days: [day('2026-11-10')] } });
+    let snap = await call(data, { token });
+    expect(Object.keys(snap.body.lpgDays)).toEqual(['2026-11-10']);
+    expect(Object.keys(snap.body.days)).toEqual(['2026-11-10']);
+    await call(data, { method: 'PUT', token, body: { deleteLpgDays: ['2026-11-10'] } });
+    snap = await call(data, { token });
+    expect(snap.body.lpgDays).toEqual({});
+    expect(Object.keys(snap.body.days)).toEqual(['2026-11-10']);
+    expect((await call(data, { method: 'PUT', token, body: { lpgDays: [{ date: 'bad' }] } })).status).toBe(400);
+  });
+
+    it('validates the patch shape', async () => {
     const { token } = issueToken();
     const bad = [{ days: [{ date: '19/06/2026', sheets: {} }] }, { settings: { products: 'x' } }, { customers: [{ name: 'no id' }] }, { deleteDays: ['x'] }, []];
     for (const body of bad) expect((await call(data, { method: 'PUT', token, body })).status).toBe(400);
