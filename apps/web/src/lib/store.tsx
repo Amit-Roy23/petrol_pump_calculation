@@ -217,7 +217,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     pushingRef.current = true;
     patchCloud({ status: 'saving' });
     try {
-      const { rev } = await api.push(patch);
+      const { rev, merged } = await api.push(patch);
       const next: SyncedState = { ...synced, days: { ...synced.days }, lpgDays: { ...(synced.lpgDays ?? {}) }, wineDays: { ...(synced.wineDays ?? {}) } };
       if (patch.settings) next.settings = settingsKey(patch.settings);
       if (patch.customers) next.customers = JSON.stringify(patch.customers);
@@ -229,7 +229,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       for (const d of patch.wineDays ?? []) next.wineDays![d.date] = JSON.stringify(d);
       for (const d of patch.deleteWineDays ?? []) delete next.wineDays![d];
       // Someone else wrote in between → keep the old rev so the next pull fetches their changes.
-      const otherWriter = rev !== synced.rev + 1;
+      // `merged`: the server kept a staff member's newer shift → fetch it.
+      const otherWriter = rev !== synced.rev + 1 || !!merged;
       next.rev = otherWriter ? synced.rev : rev;
       setSynced(next);
       pushingRef.current = false;

@@ -126,8 +126,46 @@ function ScrollTop() {
   return null;
 }
 
+/** Undo / info messages (also shown on the staff app). */
+function Toasts({ className = 'bottom-40 lg:bottom-24' }: { className?: string }) {
+  const { toasts, dismissToast } = useStore();
+  return (
+    <div className={cn('no-print pointer-events-none fixed inset-x-0 z-50 flex flex-col items-center gap-2 px-4', className)}>
+      {toasts.map((ts) => (
+        <div
+          key={ts.id}
+          role="status"
+          className={cn('rise pointer-events-auto flex items-center gap-3 rounded-xl py-2.5 pl-4 pr-2 text-sm font-semibold shadow-lift', ts.tone === 'ok' ? 'bg-ink text-bg' : 'bg-warn text-white', !ts.action && 'pr-4')}
+        >
+          {ts.text}
+          {ts.action && (
+            <button
+              className="rounded-lg bg-bg/15 px-3 py-1 font-bold text-brand hover:bg-bg/25"
+              onClick={() => {
+                ts.action!.run();
+                dismissToast(ts.id);
+              }}
+            >
+              {ts.action.label}
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function StaffShell() {
+  return (
+    <>
+      <Punch />
+      <Toasts className="bottom-24" />
+    </>
+  );
+}
+
 function Shell() {
-  const { data, t, toasts, cloud, dismissToast, business } = useStore();
+  const { data, t, cloud, business } = useStore();
   const { pathname } = useLocation();
   useThemeSync();
   useBusinessFromRoute();
@@ -137,11 +175,11 @@ function Shell() {
   const title = isLpg ? lpgSettings(data).businessName : isWine ? wineSettings(data).shopName : data.settings.stationName;
 
   // Staff punch page works on its own login – never behind the owner login.
-  if (pathname === '/punch') return <Punch />;
+  if (pathname === '/punch') return <StaffShell />;
   if (cloud.mode === 'checking') return <Splash />;
   if (cloud.mode === 'cloud' && cloud.missing.length) return <SetupNeeded missing={cloud.missing} />;
   // A staff member logged in on this phone goes straight to their punch screen.
-  if (cloud.mode === 'cloud' && cloud.needLogin) return staffSession.get() ? <Punch /> : <Login />;
+  if (cloud.mode === 'cloud' && cloud.needLogin) return staffSession.get() ? <StaffShell /> : <Login />;
   if (cloud.mode === 'cloud' && !cloud.loaded) {
     return cloud.status === 'error' || cloud.status === 'offline' ? (
       <SetupNeeded missing={[cloud.error ?? t('cantReach')]} />
@@ -251,28 +289,7 @@ function Shell() {
         </div>
       </nav>
 
-      <div className="no-print pointer-events-none fixed inset-x-0 bottom-40 z-50 flex flex-col items-center gap-2 px-4 lg:bottom-24">
-        {toasts.map((ts) => (
-          <div
-            key={ts.id}
-            role="status"
-            className={cn('rise pointer-events-auto flex items-center gap-3 rounded-xl py-2.5 pl-4 pr-2 text-sm font-semibold shadow-lift', ts.tone === 'ok' ? 'bg-ink text-bg' : 'bg-warn text-white', !ts.action && 'pr-4')}
-          >
-            {ts.text}
-            {ts.action && (
-              <button
-                className="rounded-lg bg-bg/15 px-3 py-1 font-bold text-brand hover:bg-bg/25"
-                onClick={() => {
-                  ts.action!.run();
-                  dismissToast(ts.id);
-                }}
-              >
-                {ts.action.label}
-              </button>
-            )}
-          </div>
-        ))}
-      </div>
+      <Toasts />
     </div>
   );
 }

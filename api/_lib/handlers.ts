@@ -3,6 +3,7 @@ import { missingEnv } from './env';
 import { bearer, queryParam, readJson, send, type Req, type Res } from './http';
 import type { Store } from './store';
 import { parsePatch } from './validate';
+import { mergeStaffShifts } from './staffwork';
 
 export async function health(_req: Req, res: Res) {
   const missing = missingEnv();
@@ -52,8 +53,17 @@ export function dataHandler(getStore: () => Store) {
         }
         const { patch, error } = parsePatch(body);
         if (!patch) return send(res, 400, { error });
+        // Never lose a shift a staff member saved from their phone after this copy was loaded.
+        let merged = false;
+        if (patch.days?.length) {
+          const now = new Date();
+          const stored = await Promise.all(patch.days.map((d) => store.day(String(d.date))));
+          patch.days.forEach((d, i) => {
+            if (mergeStaffShifts(d, stored[i], now)) merged = true;
+          });
+        }
         const rev = await store.apply(patch);
-        return send(res, 200, { ok: true, rev });
+        return send(res, 200, merged ? { ok: true, rev, merged: true } : { ok: true, rev });
       }
       return send(res, 405, { error: 'Method not allowed' });
     } catch (err) {

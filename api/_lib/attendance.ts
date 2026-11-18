@@ -3,6 +3,7 @@ import { hashPin, issueStaffToken, readToken, type TokenPayload } from './auth';
 import { missingEnv } from './env';
 import { bearer, queryParam, readJson, send, type Req, type Res } from './http';
 import type { Json, PunchRecord, Store } from './store';
+import { WorkError, petrolSave, petrolView, type SaveBody } from './staffwork';
 
 interface StaffRow {
   id: string;
@@ -71,6 +72,8 @@ const fail = (res: Res, status: number, error: string) => send(res, status, { er
  *   list        (GET, owner)    ?from&to → punches (no photos)
  *   photo       (GET, owner)    ?id → {data}
  *   delete      (POST, owner)   ?id
+ *   petrol      (GET, staff)    ?date → meter sheet with only the staff member's own money
+ *   petrol-save (POST, staff)   {date, machineId, shift, newCustomers?, submit?}
  */
 export function attendanceHandler(getStore: () => Store, now: () => Date = () => new Date()) {
   return async function attendance(req: Req, res: Res) {
@@ -98,13 +101,27 @@ export function attendanceHandler(getStore: () => Store, now: () => Date = () =>
       if (!token) return fail(res, 401, 'Login required');
 
       /* ---------- staff actions ---------- */
-      if (action === 'status' || action === 'punch') {
+      if (action === 'status' || action === 'punch' || action === 'petrol' || action === 'petrol-save') {
         if (token.role !== 'staff') return fail(res, 403, 'Staff login required');
         const settings = await store.settings();
         const staff = staffList(settings).find((s) => s.id === token.sid);
         // Deactivated or PIN changed → signed out.
         if (!staff || staff.active === false || !staff.pinHash || staff.pinHash.slice(0, 12) !== token.ph) return fail(res, 401, 'Login required');
         const fence = geofence(settings);
+
+        /* Petrol pump work: the staff member's own shift on the meter sheet. */
+        if (action === 'petrol' || action === 'petrol-save') {
+          if (!staffBusinesses(staff).includes('petrol')) return fail(res, 403, 'You are not set up to work at the petrol pump');
+          const me = { id: staff.id, name: staff.name };
+          try {
+            if (action === 'petrol') return send(res, 200, await petrolView(store, me, queryParam(req, 'date') ?? '', now()));
+            if (req.method !== 'POST') return fail(res, 405, 'Method not allowed');
+            return send(res, 200, await petrolSave(store, me, ((await readJson(req)) ?? {}) as SaveBody, now()));
+          } catch (e) {
+            if (e instanceof WorkError) return fail(res, e.status, e.message);
+            throw e;
+          }
+        }
 
         if (action === 'status') {
           const recent = await store.punches({ staffId: staff.id, limit: 20 });

@@ -64,6 +64,12 @@ export interface Store {
   apply(patch: Patch): Promise<number>;
   /** Shared settings only (cheaper than a full snapshot). */
   settings(): Promise<Json | null>;
+  /** Shared customer list. */
+  customers(): Promise<Json[]>;
+  /** One petrol day, or null. */
+  day(date: string): Promise<Json | null>;
+  /** Up to `limit` petrol days before `date`, newest first. */
+  daysBefore(date: string, limit: number): Promise<Json[]>;
   addPunch(rec: PunchRecord, photo: string): Promise<void>;
   /** Newest first. */
   punches(filter: PunchFilter): Promise<PunchRecord[]>;
@@ -178,6 +184,21 @@ export function mongoStore(): Store {
       const doc = await d.collection<KvDoc>('kv').findOne({ _id: 'settings' });
       return (doc?.value as Json) ?? null;
     },
+    async customers() {
+      const d = await db();
+      const doc = await d.collection<KvDoc>('kv').findOne({ _id: 'customers' });
+      return Array.isArray(doc?.value) ? (doc!.value as Json[]) : [];
+    },
+    async day(date) {
+      const d = await db();
+      const doc = await d.collection<DayDoc>('days').findOne({ _id: date });
+      return doc?.value ?? null;
+    },
+    async daysBefore(date, limit) {
+      const d = await db();
+      const rows = await d.collection<DayDoc>('days').find({ _id: { $lt: date } }).sort({ _id: -1 }).limit(limit).toArray();
+      return rows.map((r) => r.value);
+    },
     async addPunch(rec, photo) {
       const d = await db();
       await d.collection<{ _id: string; data: string; at: string }>('attendance_photos').insertOne({ _id: rec.photoId, data: photo, at: rec.at });
@@ -220,6 +241,20 @@ export function memoryStore(): Store {
   return {
     async settings() {
       return s.settings ? structuredClone(s.settings) : null;
+    },
+    async customers() {
+      return structuredClone(s.customers);
+    },
+    async day(date) {
+      return s.days[date] ? structuredClone(s.days[date]) : null;
+    },
+    async daysBefore(date, limit) {
+      return Object.keys(s.days)
+        .filter((d) => d < date)
+        .sort()
+        .reverse()
+        .slice(0, limit)
+        .map((d) => structuredClone(s.days[d]));
     },
     async addPunch(rec, photo) {
       punchRows.push(structuredClone(rec));
