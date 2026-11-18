@@ -68,6 +68,8 @@ export interface Settings {
   /** Optional for older data – see staffList() / shiftTemplates(). */
   staff?: Staff[];
   shiftTemplates?: ShiftTemplate[];
+  /** WhatsApp reminder details (optional for older data). */
+  reminders?: ReminderSettings;
   /** LPG business setup (optional for older data – see lpgSettings()). */
   lpg?: LpgSettings;
   /** Wine shop setup (optional for older data – see wineSettings()). */
@@ -159,6 +161,18 @@ export interface Customer {
   phone: string;
   vehicle: string;
   openingDuePaise: number;
+  /** When a WhatsApp due reminder was last sent (ISO time). */
+  lastReminderAt?: string;
+}
+
+/** Details printed in WhatsApp due reminders. */
+export interface ReminderSettings {
+  /** Station contact number shown at the end of the message. */
+  stationPhone: string;
+  /** UPI ID customers can pay to, e.g. kalyanifuels@okaxis. */
+  upiId: string;
+  /** Language of the message (independent of the app's language). */
+  lang: Lang;
 }
 
 export interface DueReceipt {

@@ -1,12 +1,13 @@
 import { useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, Cloud, Flame, Wine, X, Database, Download, QrCode, LogOut, RefreshCw, Fuel, Languages, Plus, RotateCcw, Sparkles, Trash2, Upload, Warehouse } from 'lucide-react';
+import { Clock, Cloud, Flame, MessageCircle, Wine, X, Database, Download, QrCode, LogOut, RefreshCw, Fuel, Languages, Plus, RotateCcw, Sparkles, Trash2, Upload, Warehouse } from 'lucide-react';
 import { RoundingMode } from '@petrolpump/shared';
 import { useStore } from '../lib/store';
 import { emptyData, sampleData } from '../lib/seed';
 import type { AppData, FuelTone, Machine, PaymentMethod, ShiftTemplate } from '../lib/types';
 import { paymentMethods, shiftTemplates } from '../lib/compute';
 import { lpgSettings } from '../lib/lpg';
+import { reminderSettings } from '../lib/whatsapp';
 import { wineSettings } from '../lib/wine';
 import { Link } from 'react-router-dom';
 import type { LpgSettings } from '../lib/types';
@@ -147,6 +148,41 @@ export default function SettingsPage() {
 
       {business !== 'lpg' && <LpgSettingsCard />}
       {business !== 'wine' && <WineSettingsCard />}
+
+      {/* WhatsApp due reminders */}
+      <Card className="p-4 sm:p-5">
+        <SectionTitle icon={<MessageCircle className="h-5 w-5 text-[#25D366]" />} title={t('remindersTitle')} sub={t('remindersHint')} />
+        <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+          <Field label={t('stationPhone')}>
+            <input
+              className="input num"
+              inputMode="tel"
+              placeholder="98300 00000"
+              value={reminderSettings(data).stationPhone}
+              onChange={(e) => update((d) => void (d.settings.reminders = { ...reminderSettings(d), stationPhone: e.target.value }))}
+            />
+          </Field>
+          <Field label={t('upiId')}>
+            <input
+              className="input"
+              placeholder="yourname@okaxis"
+              value={reminderSettings(data).upiId}
+              onChange={(e) => update((d) => void (d.settings.reminders = { ...reminderSettings(d), upiId: e.target.value }))}
+            />
+          </Field>
+          <div>
+            <span className="label">{t('messageLanguage')}</span>
+            <Segmented
+              value={reminderSettings(data).lang}
+              onChange={(v) => update((d) => void (d.settings.reminders = { ...reminderSettings(d), lang: v }))}
+              options={[
+                { value: 'en', label: 'English' },
+                { value: 'bn', label: 'বাংলা' },
+              ]}
+            />
+          </div>
+        </div>
+      </Card>
 
       {/* Extra payment methods (PPM, PPS …) */}
       <Card className="p-4 sm:p-5">
