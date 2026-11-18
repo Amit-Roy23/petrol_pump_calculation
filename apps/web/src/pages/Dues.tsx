@@ -83,6 +83,7 @@ export default function Dues() {
                       {b.lastDate && <span>{dateLabel(b.lastDate, lang, 'short')}</span>}
                     </div>
                     {remindedAgo(c.lastReminderAt, lang) && <div className="mt-0.5 text-[11px] font-semibold text-ok">✓ {remindedAgo(c.lastReminderAt, lang)}</div>}
+                    {!c.phone.trim() && b.balancePaise > 0 && <div className="mt-0.5 text-[11px] font-semibold text-warn">⚠ {t('noWaNumber')}</div>}
                   </button>
                   <div className="text-right">
                     <div className="label mb-0">{t('balance')}</div>
@@ -178,8 +179,8 @@ function CustomerModal({ customer, onClose, onSave, onDelete }: { customer: Cust
           <input className="input" autoFocus value={c.name} onChange={(e) => setC({ ...c, name: e.target.value })} />
         </Field>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label={t('phone')}>
-            <input className="input" inputMode="tel" value={c.phone} onChange={(e) => setC({ ...c, phone: e.target.value })} />
+          <Field label={t('customerPhoneLabel')}>
+            <input className="input" inputMode="tel" placeholder="98765 43210" value={c.phone} onChange={(e) => setC({ ...c, phone: e.target.value })} />
           </Field>
           <Field label={t('dueVehicle')}>
             <input className="input" value={c.vehicle} onChange={(e) => setC({ ...c, vehicle: e.target.value })} />
