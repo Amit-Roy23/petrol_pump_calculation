@@ -41,8 +41,19 @@ export interface PaymentMethod {
 export interface Staff {
   id: string;
   name: string;
+  /** Also the login for the staff punch page (with the PIN). */
   phone: string;
   active: boolean;
+  /** sha256 of the punch-in PIN (see hashPin); absent = can't log in. */
+  pinHash?: string;
+}
+
+/** Pump location for checking punches are made at the pump. */
+export interface AttendanceSettings {
+  lat: number;
+  lng: number;
+  /** Punches within this many metres count as "at the pump". */
+  radiusM: number;
 }
 
 /** Named shift with usual times, e.g. Morning 06:00–14:00. */
@@ -68,6 +79,8 @@ export interface Settings {
   /** Optional for older data – see staffList() / shiftTemplates(). */
   staff?: Staff[];
   shiftTemplates?: ShiftTemplate[];
+  /** Staff punch-in location check (optional). */
+  attendance?: AttendanceSettings;
   /** WhatsApp reminder details (optional for older data). */
   reminders?: ReminderSettings;
   /** LPG business setup (optional for older data – see lpgSettings()). */

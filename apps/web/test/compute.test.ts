@@ -20,6 +20,7 @@ import { sampleData, emptyData } from '../src/lib/seed';
 import { parseAmountExpr, splitAmounts } from '../src/lib/util';
 import { computeLpgDay, createLpgDay, lpgOpeningStock, sampleLpg } from '../src/lib/lpg';
 import { buildDueMessage, normalizePhone, waLink } from '../src/lib/whatsapp';
+import { fmtMinutes, hashPin as hashPinWeb, toSessions } from '../src/lib/attendance';
 import { computeWineDay, createWineDay, productUsed, sampleWine, wineCategoryOptions, wineOpeningStock } from '../src/lib/wine';
 
 describe('notebook page 19/06/2026', () => {
@@ -563,5 +564,33 @@ describe('dues CRUD', () => {
     expect(liveCustomers(data)).toHaveLength(0);
     expect(customerHasHistory(data, data.customers[0].id)).toBe(true);
     expect(customerBalances(data).get(data.customers[0].id)!.balancePaise).toBe(1145100);
+  });
+});
+
+describe('staff attendance (app side)', () => {
+  it('PIN hash matches the server', async () => {
+    const { createHash } = await import('crypto');
+    expect(await hashPinWeb('st1', '1234')).toBe(createHash('sha256').update('fuel-ledger:st1:1234').digest('hex'));
+  });
+
+  it('pairs punches into sessions with hours and flags a forgotten punch-out', () => {
+    const p = (id: string, staffId: string, type: 'in' | 'out', at: string) =>
+      ({ id, staffId, staffName: staffId, type, at, clientAt: '', lat: 0, lng: 0, accuracy: 0, distanceM: null, inside: null, photoId: id, device: '' }) as const;
+    const now = new Date('2026-11-21T10:00:00Z').getTime();
+    const s = toSessions(
+      [
+        p('1', 'a', 'in', '2026-11-20T03:30:00Z'),
+        p('2', 'a', 'out', '2026-11-20T12:15:00Z'),
+        p('3', 'b', 'in', '2026-11-20T04:00:00Z'), // never punched out
+        p('4', 'a', 'in', '2026-11-21T03:30:00Z'), // working now
+      ],
+      16,
+      now
+    );
+    const a1 = s.find((x) => x.in?.id === '1')!;
+    expect(a1.minutes).toBe(525); // 8h 45m
+    expect(fmtMinutes(a1.minutes!)).toBe('8h 45m');
+    expect(s.find((x) => x.in?.id === '3')!.missingOut).toBe(true);
+    expect(s.find((x) => x.in?.id === '4')!.open).toBe(true);
   });
 });

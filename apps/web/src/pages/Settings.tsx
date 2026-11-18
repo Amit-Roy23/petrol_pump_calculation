@@ -1,6 +1,6 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, Cloud, Flame, MessageCircle, Wine, X, Database, Download, QrCode, LogOut, RefreshCw, Fuel, Languages, Plus, RotateCcw, Sparkles, Trash2, Upload, Warehouse } from 'lucide-react';
+import { Clock, Cloud, Crosshair, Flame, MapPin, MessageCircle, Wine, X, Database, Download, QrCode, LogOut, RefreshCw, Fuel, Languages, Plus, RotateCcw, Sparkles, Trash2, Upload, Warehouse } from 'lucide-react';
 import { RoundingMode } from '@petrolpump/shared';
 import { useStore } from '../lib/store';
 import { emptyData, sampleData } from '../lib/seed';
@@ -148,6 +148,8 @@ export default function SettingsPage() {
 
       {business !== 'lpg' && <LpgSettingsCard />}
       {business !== 'wine' && <WineSettingsCard />}
+
+      <AttendanceLocationCard />
 
       {/* WhatsApp due reminders */}
       <Card className="p-4 sm:p-5">
@@ -668,6 +670,58 @@ function WineSettingsCard() {
       ) : (
         <p className="text-xs text-ink-3">{t('noCustomCategories')}</p>
       )}
+    </Card>
+  );
+}
+
+/** Pump location + radius used to mark punches as "at the pump" or "outside". */
+function AttendanceLocationCard() {
+  const { data, update, t, toast } = useStore();
+  const a = data.settings.attendance;
+  const [busy, setBusy] = useState(false);
+  const set = (patch: Partial<NonNullable<typeof a>>) =>
+    update((d) => {
+      d.settings.attendance = { lat: 0, lng: 0, radiusM: 200, ...(d.settings.attendance ?? {}), ...patch };
+    });
+  const useHere = () => {
+    if (!('geolocation' in navigator)) return toast(t('locationUnsupported'), 'warn');
+    setBusy(true);
+    navigator.geolocation.getCurrentPosition(
+      (p) => {
+        set({ lat: Math.round(p.coords.latitude * 1e6) / 1e6, lng: Math.round(p.coords.longitude * 1e6) / 1e6 });
+        setBusy(false);
+        toast(t('locationSaved'));
+      },
+      (err) => {
+        setBusy(false);
+        toast(err.code === err.PERMISSION_DENIED ? t('locationDenied') : t('locationWaiting'), 'warn');
+      },
+      { enableHighAccuracy: true, timeout: 30_000 }
+    );
+  };
+  const num = (v: string) => (v.trim() === '' || isNaN(Number(v)) ? 0 : Number(v));
+  return (
+    <Card className="p-4 sm:p-5">
+      <SectionTitle icon={<MapPin className="h-5 w-5 text-brand" />} title={t('attendanceSettingsTitle')} sub={t('attendanceSettingsHint')} />
+      <div className="grid gap-3 sm:grid-cols-[1fr_1fr_140px_auto] sm:items-end">
+        <Field label="Latitude">
+          <input className="input num" inputMode="decimal" value={a?.lat || ''} placeholder="22.572600" onChange={(e) => set({ lat: num(e.target.value) })} />
+        </Field>
+        <Field label="Longitude">
+          <input className="input num" inputMode="decimal" value={a?.lng || ''} placeholder="88.363900" onChange={(e) => set({ lng: num(e.target.value) })} />
+        </Field>
+        <Field label={t('radiusM')}>
+          <input className="input num" inputMode="numeric" value={a?.radiusM ?? 200} onChange={(e) => set({ radiusM: Math.max(20, Math.floor(num(e.target.value))) })} />
+        </Field>
+        <button className="btn-ghost" onClick={useHere} disabled={busy}>
+          <Crosshair className="h-4 w-4" /> {t('useMyLocation')}
+        </button>
+      </div>
+      {a?.lat ? (
+        <a className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-brand" href={`https://www.google.com/maps?q=${a.lat},${a.lng}`} target="_blank" rel="noreferrer">
+          <MapPin className="h-3.5 w-3.5" /> {t('viewOnMap')}
+        </a>
+      ) : null}
     </Card>
   );
 }

@@ -92,6 +92,9 @@ export function Login() {
             {busy ? t('signingIn') : t('signIn')}
           </button>
         </div>
+        <a href="#/punch" className="block border-t border-line px-6 py-3 text-center text-sm font-semibold text-brand hover:bg-sunk">
+          {t('punchTitle')} →
+        </a>
         <div className="border-t border-line bg-sunk px-6 py-3 text-center text-xs text-ink-3">{data.settings.language === 'bn' ? 'দৈনিক মিটার ও কালেকশন খাতা' : 'Daily meter & collection ledger'}</div>
       </form>
     </Centered>
