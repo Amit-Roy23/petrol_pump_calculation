@@ -12,6 +12,7 @@ import Closing from './pages/Closing';
 import Dues from './pages/Dues';
 import SettingsPage from './pages/Settings';
 import Staff from './pages/Staff';
+import Punch from './pages/Punch';
 import LpgSheet from './pages/LpgSheet';
 import LpgReports from './pages/LpgReports';
 import { lpgSettings } from './lib/lpg';
@@ -125,6 +126,7 @@ function ScrollTop() {
 
 function Shell() {
   const { data, t, toasts, cloud, dismissToast, business } = useStore();
+  const { pathname } = useLocation();
   useThemeSync();
   useBusinessFromRoute();
   const isLpg = business === 'lpg';
@@ -132,6 +134,8 @@ function Shell() {
   const nav = isLpg ? LPG_NAV : isWine ? WINE_NAV : NAV;
   const title = isLpg ? lpgSettings(data).businessName : isWine ? wineSettings(data).shopName : data.settings.stationName;
 
+  // Staff punch page works on its own login – never behind the owner login.
+  if (pathname === '/punch') return <Punch />;
   if (cloud.mode === 'checking') return <Splash />;
   if (cloud.mode === 'cloud' && cloud.missing.length) return <SetupNeeded missing={cloud.missing} />;
   if (cloud.mode === 'cloud' && cloud.needLogin) return <Login />;

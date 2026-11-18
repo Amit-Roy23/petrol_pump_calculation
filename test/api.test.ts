@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { Readable } from 'stream';
 import { dataHandler, health, login } from '../api/_lib/handlers';
 import { memoryStore, type Store } from '../api/_lib/store';
-import { issueToken, verifyToken } from '../api/_lib/auth';
+import { hashPin, issueToken, verifyToken } from '../api/_lib/auth';
+import { attendanceHandler, distanceM } from '../api/_lib/attendance';
 
 type Result = { status: number; body: any };
 
@@ -123,5 +124,105 @@ describe('api', () => {
     delete process.env.MONGODB_URI;
     expect((await call(data, { token: 'x' })).status).toBe(503);
     expect((await call(login, { method: 'POST', body: { password: 'secret-pass' } })).status).toBe(503);
+  });
+});
+
+describe('staff attendance', () => {
+  const photo = 'data:image/jpeg;base64,' + 'A'.repeat(400);
+  let store: Store;
+  let clock: Date;
+  let att: ReturnType<typeof attendanceHandler>;
+
+  beforeEach(async () => {
+    process.env.MONGODB_URI = 'mongodb://example/fuel';
+    process.env.APP_PASSWORD = 'secret-pass';
+    store = memoryStore();
+    clock = new Date('2026-11-20T03:30:00.000Z'); // 09:00 IST
+    att = attendanceHandler(() => store, () => clock);
+    await store.apply({
+      settings: {
+        stationName: 'Demo',
+        products: [],
+        machines: [],
+        attendance: { lat: 22.5726, lng: 88.3639, radiusM: 200 },
+        staff: [
+          { id: 'st1', name: 'Ramesh', phone: '98765 43210', active: true, pinHash: hashPin('st1', '1234') },
+          { id: 'st2', name: 'Old Staff', phone: '9000000000', active: false, pinHash: hashPin('st2', '1111') },
+          { id: 'st3', name: 'No PIN', phone: '9111111111', active: true },
+        ],
+      },
+    });
+  });
+
+  const staffLogin = async (phone = '+91 98765 43210', pin = '1234') => call(att, { method: 'POST', url: '/api/attendance?action=staff-login', body: { phone, pin } });
+  const punch = (token: string, type: 'in' | 'out', extra: Record<string, unknown> = {}) =>
+    call(att, { method: 'POST', url: '/api/attendance?action=punch', token, body: { type, photo, lat: 22.5728, lng: 88.364, accuracy: 12, clientAt: 'x', ...extra } });
+
+  it('staff log in with mobile + PIN; wrong PIN, inactive or no-PIN staff are refused', async () => {
+    const ok = await staffLogin();
+    expect(ok.status).toBe(200);
+    expect(ok.body.staff).toEqual({ id: 'st1', name: 'Ramesh' });
+    expect((await staffLogin('9876543210', '0000')).status).toBe(401);
+    expect((await staffLogin('9000000000', '1111')).status).toBe(401);
+    expect((await staffLogin('9111111111', '1234')).status).toBe(401);
+  });
+
+  it('a staff token cannot read or change the ledger', async () => {
+    const { token } = (await staffLogin()).body;
+    expect((await call(dataHandler(() => store), { token })).status).toBe(401);
+    expect((await call(att, { url: '/api/attendance?action=list', token })).status).toBe(403);
+  });
+
+  it('punch in → punch out with server time, distance and photo', async () => {
+    const { token } = (await staffLogin()).body;
+    const a = await punch(token, 'in');
+    expect(a.status).toBe(200);
+    expect(a.body.punch.at).toBe('2026-11-20T03:30:00.000Z');
+    expect(a.body.punch.inside).toBe(true);
+    expect(a.body.punch.distanceM).toBeLessThan(50);
+    expect((await punch(token, 'in')).status).toBe(409); // already in
+    clock = new Date('2026-11-20T12:00:00.000Z');
+    const b = await punch(token, 'out', { lat: 22.6, lng: 88.4 });
+    expect(b.status).toBe(200);
+    expect(b.body.punch.inside).toBe(false);
+    expect((await punch(token, 'out')).status).toBe(409); // must punch in first
+    const st = await call(att, { url: '/api/attendance?action=status', token });
+    expect(st.body.last.type).toBe('out');
+    expect(st.body.recent).toHaveLength(2);
+    // Owner sees both, can open the photo and delete
+    const owner = issueToken().token;
+    const list = await call(att, { url: '/api/attendance?action=list&from=2026-11-20T00:00:00.000Z&to=2026-11-21T00:00:00.000Z', token: owner });
+    expect(list.body.punches.map((p: any) => p.type)).toEqual(['out', 'in']);
+    expect(JSON.stringify(list.body)).not.toContain('base64');
+    const ph = await call(att, { url: `/api/attendance?action=photo&id=${list.body.punches[1].photoId}`, token: owner });
+    expect(ph.body.data).toBe(photo);
+    expect((await call(att, { method: 'POST', url: `/api/attendance?action=delete&id=${list.body.punches[0].id}`, token: owner })).status).toBe(200);
+  });
+
+  it('a forgotten punch-out does not block the next day', async () => {
+    const { token } = (await staffLogin()).body;
+    await punch(token, 'in');
+    clock = new Date('2026-11-21T03:30:00.000Z'); // next morning, 24 h later
+    expect((await punch(token, 'in')).status).toBe(200);
+  });
+
+  it('needs a real photo and location', async () => {
+    const { token } = (await staffLogin()).body;
+    expect((await punch(token, 'in', { photo: 'data:image/png;base64,AAAA' })).status).toBe(400);
+    expect((await punch(token, 'in', { lat: 0, lng: 0 })).status).toBe(400);
+    expect((await punch(token, 'in', { lat: undefined })).status).toBe(400);
+  });
+
+  it('changing the PIN signs the staff member out', async () => {
+    const { token } = (await staffLogin()).body;
+    const s = (await store.settings()) as any;
+    s.staff[0].pinHash = hashPin('st1', '9999');
+    await store.apply({ settings: s });
+    expect((await call(att, { url: '/api/attendance?action=status', token })).status).toBe(401);
+  });
+
+  it('measures distance correctly', () => {
+    expect(distanceM({ lat: 22.5726, lng: 88.3639 }, { lat: 22.5726, lng: 88.3739 })).toBeGreaterThan(1000);
+    expect(distanceM({ lat: 22.5726, lng: 88.3639 }, { lat: 22.5726, lng: 88.3639 })).toBe(0);
   });
 });

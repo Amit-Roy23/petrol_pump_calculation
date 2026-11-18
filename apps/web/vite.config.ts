@@ -20,10 +20,12 @@ function localApi(): Plugin {
       if (!process.env.MONGODB_URI) process.env.MONGODB_URI = 'memory://local';
       const store = process.env.MONGODB_URI.startsWith('memory:') ? memoryStore() : mongoStore();
       const data = dataHandler(() => store);
+      const { attendanceHandler } = await import('../../api/_lib/attendance');
+      const attendance = attendanceHandler(() => store);
       server.config.logger.info(`  ➜  API:     /api (${process.env.MONGODB_URI.startsWith('memory:') ? 'in-memory database' : 'MongoDB'})`);
       server.middlewares.use('/api', (req, res, next) => {
         const route = (req.url ?? '').split('?')[0].replace(/^\//, '');
-        const handler = route === 'health' ? health : route === 'login' ? login : route === 'data' ? data : null;
+        const handler = route === 'health' ? health : route === 'login' ? login : route === 'data' ? data : route === 'attendance' ? attendance : null;
         if (!handler) return next();
         req.url = '/api' + req.url;
         void handler(req, res);
