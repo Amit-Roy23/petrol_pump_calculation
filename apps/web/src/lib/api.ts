@@ -89,7 +89,7 @@ export async function checkHealth(): Promise<Health | 'none' | 'offline'> {
 export const api = {
   login: (password: string) => request<{ token: string; expiresAt: number }>('login', { method: 'POST', body: JSON.stringify({ password }) }),
   snapshot: (sinceRev?: number) => request<ServerSnapshot | { unchanged: true; rev: number }>(`data${sinceRev ? `?rev=${sinceRev}` : ''}`),
-  push: (patch: Patch) => request<{ ok: true; rev: number }>('data', { method: 'PUT', body: JSON.stringify(patch) }),
+  push: (patch: Patch) => request<{ ok: true; rev: number; merged?: boolean }>('data', { method: 'PUT', body: JSON.stringify(patch) }),
 };
 
 /* ---------- diffing against the last state the server confirmed ---------- */

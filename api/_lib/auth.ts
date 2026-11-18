@@ -42,7 +42,7 @@ export function issueToken(now = Date.now()): { token: string; expiresAt: number
   return issue({ exp: expiry(now), role: 'owner' });
 }
 
-/** Staff token: attendance (punch in/out) only. */
+/** Staff token: punch in/out and their own petrol shift only – never /api/data. */
 export function issueStaffToken(staffId: string, pinHash: string, now = Date.now()): { token: string; expiresAt: number } {
   return issue({ exp: expiry(now), role: 'staff', sid: staffId, ph: pinHash.slice(0, 12) });
 }

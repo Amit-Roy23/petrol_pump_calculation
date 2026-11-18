@@ -21,7 +21,7 @@ import { cn, litresFmt, parseAmountExpr, rupee, uid } from '../lib/util';
 import { Card, DateNav, DiffBadge, Lcd, MoneyInput, ProductTag, toneClass, Empty } from '../components/ui';
 import { LineItemsEditor, QuickAmountList } from '../components/EntryList';
 
-const METHOD_ACCENTS = ['bg-diesel', 'bg-petrol', 'bg-brand', 'bg-ink'];
+export const METHOD_ACCENTS = ['bg-diesel', 'bg-petrol', 'bg-brand', 'bg-ink'];
 
 export default function DaySheet() {
   const { data, date, getDay, updateDay, update, t, toast } = useStore();
@@ -236,6 +236,7 @@ function MachineSheetView({ calc, locked }: { calc: SheetCalc; locked: boolean }
     });
 
   const templates = shiftTemplates(settings);
+  const clock = (iso: string) => new Date(iso).toLocaleTimeString(settings.language === 'bn' ? 'bn-IN' : 'en-IN', { hour: '2-digit', minute: '2-digit' });
 
   return (
     <div className="space-y-4">
@@ -278,6 +279,14 @@ function MachineSheetView({ calc, locked }: { calc: SheetCalc; locked: boolean }
                   <span className="num text-ink-3">{rupee(x.salePaise)}</span>
                 )}
               </span>
+              {(x.shift.submittedAt || x.shift.staffUpdatedAt) && (
+                <span className={cn('flex items-center gap-1 truncate text-[10px] font-bold', x.shift.submittedAt ? 'text-ok' : 'text-cng')}>
+                  <Smartphone className="h-3 w-3 shrink-0" />
+                  {x.shift.submittedAt
+                    ? `${t('submittedBy')} ${x.shift.submittedBy ?? x.staffName} · ${clock(x.shift.submittedAt)}`
+                    : `${t('staffEntered')} · ${clock(x.shift.staffUpdatedAt!)}`}
+                </span>
+              )}
             </button>
           );
         })}
@@ -610,7 +619,8 @@ function WorkerInput({ value, disabled, onCommit }: { value: string; disabled: b
   );
 }
 
-function NozzleRowView({ row, locked, onChange }: { row: NozzleRow; locked: boolean; onChange: (id: string, f: 'opening' | 'closing' | 'testing', v: string) => void }) {
+/** One nozzle's opening / closing / testing row. `lockOpening` = carried forward, not editable (staff app). */
+export function NozzleRowView({ row, locked, lockOpening, onChange }: { row: NozzleRow; locked: boolean; lockOpening?: boolean; onChange: (id: string, f: 'opening' | 'closing' | 'testing', v: string) => void }) {
   const { t } = useStore();
   const { nozzle, reading } = row;
   const err = row.error && { closingLess: t('errClosingLess'), invalid: t('errInvalid'), testingTooHigh: t('errTesting') }[row.error];
@@ -627,12 +637,14 @@ function NozzleRowView({ row, locked, onChange }: { row: NozzleRow; locked: bool
         <label className="block">
           <span className="label md:hidden">{t('opening')}</span>
           <input
-            className={cn('input num px-2.5 py-2 text-[14px]', row.warning === 'carryMismatch' && 'border-warn')}
+            className={cn('input num px-2.5 py-2 text-[14px]', row.warning === 'carryMismatch' && 'border-warn', lockOpening && 'border-transparent bg-sunk text-ink-2')}
             inputMode="decimal"
             value={reading.opening}
             disabled={locked}
+            readOnly={lockOpening}
+            tabIndex={lockOpening ? -1 : undefined}
             placeholder="0.000"
-            onChange={(e) => onChange(nozzle.id, 'opening', e.target.value)}
+            onChange={(e) => !lockOpening && onChange(nozzle.id, 'opening', e.target.value)}
           />
         </label>
         <label className="block">
@@ -673,7 +685,7 @@ function NozzleRowView({ row, locked, onChange }: { row: NozzleRow; locked: bool
           {row.warning === 'carryMismatch' && (
             <span className="text-warn">
               ⚠ {t('warnCarry')} (<span className="num">{row.expectedOpening}</span>)
-              {!locked && (
+              {!locked && !lockOpening && (
                 <button className="ml-2 underline" onClick={() => onChange(nozzle.id, 'opening', row.expectedOpening!)}>
                   {t('useValue')}
                 </button>
@@ -686,19 +698,37 @@ function NozzleRowView({ row, locked, onChange }: { row: NozzleRow; locked: bool
   );
 }
 
-function DueEditor({ dues, locked, onChange }: { dues: Entry[]; locked: boolean; onChange: (next: Entry[]) => void }) {
+/**
+ * Dues given on credit in a shift. Customers come from the ledger; the staff
+ * app passes its own name-only list and `onNewCustomer` instead.
+ */
+export function DueEditor({
+  dues,
+  locked,
+  onChange,
+  customers: customerList,
+  onNewCustomer,
+}: {
+  dues: Entry[];
+  locked: boolean;
+  onChange: (next: Entry[]) => void;
+  customers?: { id: string; name: string; deleted?: boolean }[];
+  /** Returns the new customer's id. */
+  onNewCustomer?: (name: string, vehicle: string) => string;
+}) {
   const { data, update, t, toast } = useStore();
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const total = dues.reduce((a, b) => a + b.amountPaise, 0);
-  const customers = data.customers;
+  const customers = customerList ?? data.customers;
 
   const add = () => {
     const paise = parseAmountExpr(amount);
     if (!name.trim() || !paise || paise <= 0) return;
-    const customer = customers.find((c) => c.name.trim().toLowerCase() === name.trim().toLowerCase());
+    const customer = customers.find((c) => !(onNewCustomer && c.deleted) && c.name.trim().toLowerCase() === name.trim().toLowerCase());
     let customerId = customer?.id;
+    if (!customerId && onNewCustomer) customerId = onNewCustomer(name.trim(), note.trim());
     if (customer?.deleted) update((d) => void (d.customers = d.customers.map((x) => (x.id === customer.id ? { ...x, deleted: false } : x))));
     if (!customerId) {
       customerId = uid();

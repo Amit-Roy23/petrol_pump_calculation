@@ -128,6 +128,11 @@ export interface ShiftSheet {
   /** Expenses the worker paid out of this shift's cash (tea, repairs …). */
   expenses?: LineItem[];
   remark: string;
+  /** Set when the worker pressed "Submit & close shift" in the staff app. */
+  submittedAt?: string;
+  submittedBy?: string;
+  /** Last save from the staff app (the server uses it to never lose a staff save). */
+  staffUpdatedAt?: string;
 }
 
 /**

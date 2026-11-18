@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Camera, CheckCircle2, Clock, KeyRound, Loader2, LogIn, LogOut, MapPin, RefreshCw, TriangleAlert, UserRound } from 'lucide-react';
+import { Camera, CheckCircle2, Clock, Fingerprint, Gauge, KeyRound, Loader2, LogIn, LogOut, MapPin, RefreshCw, TriangleAlert, UserRound } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { AttendanceError, attendanceApi, distanceM, fmtDistance, fmtMinutes, staffSession, type Punch, type StaffStatus } from '../lib/attendance';
 import { cn } from '../lib/util';
 import { BrandMark } from '../components/BrandMark';
+import { StaffPetrol } from './StaffPetrol';
 
 /* ------------------------------------------------------------------ */
 /* Staff punch page – opened at …/#/punch on the staff member's phone. */
@@ -12,9 +13,105 @@ import { BrandMark } from '../components/BrandMark';
 
 export default function Punch() {
   const [session, setSession] = useState(staffSession.get());
+  const logout = useCallback(() => {
+    staffSession.set(null);
+    setSession(null);
+  }, []);
+  if (!session) {
+    return (
+      <div className="paper flex min-h-screen justify-center px-4 py-6 sm:py-10">
+        <div className="w-full max-w-md">
+          <StaffLogin onDone={() => setSession(staffSession.get())} />
+        </div>
+      </div>
+    );
+  }
+  return <StaffApp token={session.token} name={session.name} onLogout={logout} />;
+}
+
+type Tab = 'punch' | 'shift';
+const TAB_KEY = 'fuel-ledger:staff-tab';
+
+/** The staff member's app: punch in / out, and (petrol staff) their shift on the meter sheet. */
+function StaffApp({ token, name, onLogout }: { token: string; name: string; onLogout: () => void }) {
+  const { t } = useStore();
+  const [parts, setParts] = useState<string[] | null>(null);
+  const [tab, setTabState] = useState<Tab>(() => {
+    try {
+      return localStorage.getItem(TAB_KEY) === 'shift' ? 'shift' : 'punch';
+    } catch {
+      return 'punch';
+    }
+  });
+  const setTab = (x: Tab) => {
+    setTabState(x);
+    window.scrollTo(0, 0);
+    try {
+      localStorage.setItem(TAB_KEY, x);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  useEffect(() => {
+    attendanceApi
+      .status(token)
+      .then((s) => setParts(s.staff.businesses?.length ? s.staff.businesses : ['petrol']))
+      .catch((e) => {
+        if (e instanceof AttendanceError && e.status === 401) onLogout();
+      });
+  }, [token, onLogout]);
+
+  // Petrol staff get the "My shift" tab (shown while we don't know yet, to avoid a jump).
+  const petrol = parts === null || parts.includes('petrol');
+  const current: Tab = petrol ? tab : 'punch';
+
   return (
-    <div className="paper flex min-h-screen justify-center px-4 py-6 sm:py-10">
-      <div className="w-full max-w-md">{session ? <PunchScreen token={session.token} onLogout={() => (staffSession.set(null), setSession(null))} /> : <StaffLogin onDone={() => setSession(staffSession.get())} />}</div>
+    <div className="paper flex min-h-screen justify-center px-4 pb-28 pt-6 sm:pt-10">
+      <div className={cn('w-full', current === 'shift' ? 'max-w-2xl' : 'max-w-md')}>
+        {current === 'punch' ? (
+          <PunchScreen token={token} onLogout={onLogout} />
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <BrandMark className="h-10 w-10 shrink-0" />
+                <div className="min-w-0">
+                  <div className="truncate font-display text-lg font-extrabold leading-tight">{name}</div>
+                  <div className="truncate text-xs text-ink-3">{t('myShiftTab')}</div>
+                </div>
+              </div>
+              <button className="btn-quiet shrink-0 px-2 text-xs" onClick={onLogout}>
+                <LogOut className="h-4 w-4" /> {t('signOut')}
+              </button>
+            </div>
+            <StaffPetrol token={token} onLogout={onLogout} />
+          </div>
+        )}
+      </div>
+
+      {petrol && (
+        <nav className="no-print fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
+          <div className="mx-auto grid max-w-md grid-cols-2">
+            {(
+              [
+                ['punch', Fingerprint, t('tabPunch')],
+                ['shift', Gauge, t('myShiftTab')],
+              ] as const
+            ).map(([key, Icon, label]) => (
+              <button
+                key={key}
+                onClick={() => setTab(key)}
+                aria-current={current === key ? 'page' : undefined}
+                className={cn('flex flex-col items-center gap-0.5 py-2.5 text-xs font-bold transition', current === key ? 'text-brand' : 'text-ink-3')}
+              >
+                <Icon className="h-6 w-6" />
+                {label}
+              </button>
+            ))}
+          </div>
+        </nav>
+      )}
     </div>
   );
 }

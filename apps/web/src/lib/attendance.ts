@@ -1,4 +1,6 @@
 import { tokenStore } from './api';
+import type { DayRecord, Machine, PaymentMethod, Product, ShiftSheet, ShiftTemplate } from './types';
+import type { RoundingMode } from '@petrolpump/shared';
 
 /** One punch as returned by the server (photo loaded separately). */
 export interface Punch {
@@ -34,6 +36,36 @@ export interface StaffStatus {
   geofence: Geofence | null;
   serverTime: string;
   openShiftHours: number;
+}
+
+/** What the server sends a petrol staff phone: their own shifts in full, others' readings only. */
+export interface PetrolWork {
+  me: { id: string; name: string };
+  date: string;
+  serverTime: string;
+  settings: {
+    stationName: string;
+    products: Product[];
+    machines: Machine[];
+    roundingMode: RoundingMode;
+    tolerancePaise: number;
+    paymentMethods: PaymentMethod[];
+    shiftTemplates: ShiftTemplate[];
+    staff: { id: string; name: string; phone: string; active: boolean }[];
+  };
+  customers: { id: string; name: string }[];
+  day: DayRecord | null;
+  previousDays: DayRecord[];
+}
+
+export interface PetrolSaveResult {
+  ok: true;
+  shiftId: string;
+  day: DayRecord;
+  /** Due customers the server added from this save. */
+  customers: { id: string; name: string }[];
+  /** Typed name matched an existing customer: sent id → real id. */
+  aliases: Record<string, string>;
 }
 
 export class AttendanceError extends Error {
@@ -92,6 +124,9 @@ export const attendanceApi = {
   status: (token: string) => call<StaffStatus>('status', { token }),
   punch: (token: string, body: { type: 'in' | 'out'; photo: string; lat: number; lng: number; accuracy: number; business: 'petrol' | 'lpg' | 'wine' }) =>
     call<{ ok: true; punch: Punch }>('punch', { token, method: 'POST', body: { ...body, clientAt: new Date().toString(), device: navigator.userAgent } }),
+  petrol: (token: string, date: string) => call<PetrolWork>('petrol', { token, query: { date } }),
+  petrolSave: (token: string, body: { date: string; machineId: string; shift: Partial<ShiftSheet>; newCustomers?: { id: string; name: string }[]; submit?: boolean }) =>
+    call<PetrolSaveResult>('petrol-save', { token, method: 'POST', body }),
   // Owner
   list: (from: string, to: string) => call<{ punches: Punch[]; openShiftHours: number }>('list', { token: tokenStore.get(), query: { from, to } }),
   photo: (id: string) => call<{ data: string }>('photo', { token: tokenStore.get(), query: { id } }),
