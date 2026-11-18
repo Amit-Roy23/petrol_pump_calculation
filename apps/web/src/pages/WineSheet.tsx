@@ -37,7 +37,7 @@ export default function WineSheet() {
   const categories = [...new Set(calc.rows.map((r) => r.product.category || 'Other'))];
   const needle = q.trim().toLowerCase();
   const visible = calc.rows.filter(
-    (r) => (!cat || (r.product.category || 'Other') === cat) && (!needle || `${r.product.name} ${r.product.size} ${r.product.category}`.toLowerCase().includes(needle))
+    (r) => (!cat || (r.product.category || 'Other') === cat) && (!needle || `${r.product.name} ${r.product.billName ?? ''} ${r.product.size} ${r.product.category}`.toLowerCase().includes(needle))
   );
   const groups = categories.map((c) => ({ c, rows: visible.filter((r) => (r.product.category || 'Other') === c) })).filter((g) => g.rows.length);
 
@@ -172,8 +172,12 @@ function BrandRow({ r, locked, onChange }: { r: WineRowCalc; locked: boolean; on
       <div className="grid grid-cols-3 items-end gap-2 md:grid-cols-[minmax(0,1fr)_52px_64px_60px_84px_48px_100px] md:items-center">
         <div className="col-span-3 flex items-baseline justify-between gap-2 md:col-span-1 md:block">
           <div className="min-w-0">
-            <span className="font-semibold">{r.product.name}</span> <span className="text-sm text-ink-2">{r.product.size}</span>
+            <span className="font-semibold" title={r.product.billName || undefined}>
+              {r.product.name}
+            </span>{' '}
+            <span className="text-sm text-ink-2">{r.product.size}</span>
             {r.low && !r.error && <span className="chip ml-1.5 bg-warn-soft px-1.5 py-0 text-[10px] text-warn">{t('lowStockWarn')}</span>}
+            {r.product.billName && r.product.billName !== r.product.name && <div className="truncate text-[11px] text-ink-3">{r.product.billName}</div>}
           </div>
           <div className="num shrink-0 text-xs text-ink-3">
             {rupee(r.row.mrpPaise)}

@@ -46,11 +46,11 @@ export default function WineReports() {
 
   // Brand-wise totals for the range, best sellers first.
   const brands = useMemo(() => {
-    const map = new Map<string, { name: string; size: string; category: string; sold: number; amount: number }>();
+    const map = new Map<string, { name: string; billName: string; size: string; category: string; sold: number; amount: number }>();
     for (const r of rows)
       for (const b of r.rows) {
         if (!b.sold) continue;
-        const cur = map.get(b.product.id) ?? { name: b.product.name, size: b.product.size, category: b.product.category, sold: 0, amount: 0 };
+        const cur = map.get(b.product.id) ?? { name: b.product.name, billName: b.product.billName ?? '', size: b.product.size, category: b.product.category, sold: 0, amount: 0 };
         cur.sold += b.sold;
         cur.amount += b.amountPaise;
         map.set(b.product.id, cur);
@@ -75,7 +75,7 @@ export default function WineReports() {
   const exportBrands = () =>
     downloadFile(
       `wine_brands_${from}_${to}.csv`,
-      csvOf([['Brand', 'Size', 'Category', 'Bottles Sold', 'Amount'], ...brands.map((b) => [b.name, b.size, b.category, b.sold, (b.amount / 100).toFixed(2)])]),
+      csvOf([['Brand', 'Bill Name', 'Size', 'Category', 'Bottles Sold', 'Amount'], ...brands.map((b) => [b.name, b.billName, b.size, b.category, b.sold, (b.amount / 100).toFixed(2)])]),
       'text/csv'
     );
 

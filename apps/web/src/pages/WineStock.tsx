@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react';
 import { Package, Pencil, Plus, Search, Trash2, Wine } from 'lucide-react';
 import { useStore } from '../lib/store';
-import { WINE_CATEGORIES, wineOpeningStock, wineSettings } from '../lib/wine';
+import { WINE_CATEGORIES, wineCategoryOptions, wineOpeningStock, wineSettings } from '../lib/wine';
 import type { WineProduct } from '../lib/types';
 import { cn, paiseToInput, parseAmountExpr, rupee, todayISO, uid } from '../lib/util';
 import { Card, Empty, Field, Modal, Stat } from '../components/ui';
 
-const blank = (): WineProduct => ({ id: '', name: '', size: '750 ml', category: 'Whisky', mrpPaise: 0, costPaise: 0, openingStock: 0, lowStock: 6, active: true });
+const NEW_CAT = '__new__';
+
+const blank = (): WineProduct => ({ id: '', name: '', billName: '', size: '750 ml', category: 'Whisky', mrpPaise: 0, costPaise: 0, openingStock: 0, lowStock: 6, active: true });
 
 export default function WineStock() {
   const { data, update, t, toast } = useStore();
@@ -20,17 +22,24 @@ export default function WineStock() {
 
   const needle = q.trim().toLowerCase();
   const list = st.products
-    .filter((p) => !needle || `${p.name} ${p.size} ${p.category}`.toLowerCase().includes(needle))
+    .filter((p) => !needle || `${p.name} ${p.billName ?? ''} ${p.size} ${p.category}`.toLowerCase().includes(needle))
     .sort((a, b) => (a.category + a.name + a.size).localeCompare(b.category + b.name + b.size));
   const value = st.products.filter((p) => p.active).reduce((a, p) => a + (stock[p.id] ?? 0) * p.mrpPaise, 0);
   const bottles = st.products.filter((p) => p.active).reduce((a, p) => a + (stock[p.id] ?? 0), 0);
   const lowCount = st.products.filter((p) => p.active && p.lowStock > 0 && (stock[p.id] ?? 0) <= p.lowStock).length;
 
-  const save = (p: WineProduct) => {
+  const save = (input: WineProduct) => {
+    let p = input;
     const name = p.name.trim();
     if (!name) return;
     update((d) => {
       const ws = structuredClone(wineSettings(d));
+      p = { ...p, billName: (p.billName ?? '').trim(), category: p.category.trim() || 'Other' };
+      // Remember a category the shop typed itself so it shows in the dropdown next time.
+      if (!WINE_CATEGORIES.some((c) => c.toLowerCase() === p.category.toLowerCase())) {
+        ws.customCategories = ws.customCategories ?? [];
+        if (!ws.customCategories.some((c) => c.toLowerCase() === p.category.toLowerCase())) ws.customCategories.push(p.category);
+      }
       if (!p.id) ws.products.push({ ...p, name, id: uid() });
       else {
         const i = ws.products.findIndex((x) => x.id === p.id);
@@ -101,6 +110,7 @@ export default function WineStock() {
                     <tr key={p.id} className={cn('hover:bg-sunk/60', !p.active && 'opacity-50')}>
                       <td className="px-4 py-2.5 sm:px-5">
                         <span className="font-semibold">{p.name}</span> <span className="text-ink-2">{p.size}</span>
+                        {p.billName && p.billName !== p.name && <div className="text-[11px] text-ink-3">{t('billName')}: {p.billName}</div>}
                       </td>
                       <td className="px-2 py-2.5 text-ink-2">{p.category}</td>
                       <td className="num px-2 py-2.5 text-right">{rupee(p.mrpPaise)}</td>
@@ -151,6 +161,20 @@ function BrandModal({ product, onClose, onSave, onDelete }: { product: WineProdu
   const [p, setP] = useState(product);
   const [mrp, setMrp] = useState(paiseToInput(product.mrpPaise));
   const [cost, setCost] = useState(paiseToInput(product.costPaise));
+  const { data } = useStore();
+  const [extraCats, setExtraCats] = useState<string[]>([]);
+  const categoryOptions = [...wineCategoryOptions(wineSettings(data)), ...extraCats.filter((c) => !wineCategoryOptions(wineSettings(data)).includes(c))];
+  if (p.category && !categoryOptions.includes(p.category)) categoryOptions.push(p.category);
+  const [addingCat, setAddingCat] = useState(false);
+  const [newCat, setNewCat] = useState('');
+  const addCat = () => {
+    const v = newCat.trim();
+    if (!v) return;
+    const existing = categoryOptions.find((c) => c.toLowerCase() === v.toLowerCase());
+    if (!existing) setExtraCats((xs) => [...xs, v]);
+    setP({ ...p, category: existing ?? v });
+    setAddingCat(false);
+  };
   const int = (v: string) => Math.max(0, Math.floor(Number(v.replace(/\D/g, '')) || 0));
   return (
     <Modal
@@ -181,6 +205,9 @@ function BrandModal({ product, onClose, onSave, onDelete }: { product: WineProdu
         <Field label={t('brandName')}>
           <input className="input" autoFocus value={p.name} onChange={(e) => setP({ ...p, name: e.target.value })} />
         </Field>
+        <Field label={t('billName')} hint={t('billNameHint')}>
+          <input className="input" value={p.billName ?? ''} placeholder={p.name} onChange={(e) => setP({ ...p, billName: e.target.value })} />
+        </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label={t('size')}>
             <input className="input" list="wine-sizes" value={p.size} onChange={(e) => setP({ ...p, size: e.target.value })} />
@@ -191,12 +218,37 @@ function BrandModal({ product, onClose, onSave, onDelete }: { product: WineProdu
             </datalist>
           </Field>
           <Field label={t('category')}>
-            <input className="input" list="wine-cats" value={p.category} onChange={(e) => setP({ ...p, category: e.target.value })} />
-            <datalist id="wine-cats">
-              {WINE_CATEGORIES.map((x) => (
-                <option key={x} value={x} />
-              ))}
-            </datalist>
+            {addingCat ? (
+              <div className="flex gap-1.5">
+                <input
+                  className="input"
+                  autoFocus
+                  placeholder={t('newCategoryPrompt')}
+                  value={newCat}
+                  onChange={(e) => setNewCat(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') addCat();
+                    if (e.key === 'Escape') setAddingCat(false);
+                  }}
+                />
+                <button type="button" className="btn-ghost shrink-0 px-3" onClick={addCat} disabled={!newCat.trim()}>
+                  {t('add')}
+                </button>
+              </div>
+            ) : (
+              <select
+                className="input"
+                value={p.category}
+                onChange={(e) => (e.target.value === NEW_CAT ? (setNewCat(''), setAddingCat(true)) : setP({ ...p, category: e.target.value }))}
+              >
+                {categoryOptions.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+                <option value={NEW_CAT}>{t('addCategory')}</option>
+              </select>
+            )}
           </Field>
           <Field label={t('mrp')}>
             <input className="input num" inputMode="decimal" value={mrp} onChange={(e) => setMrp(e.target.value)} />

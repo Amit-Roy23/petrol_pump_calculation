@@ -15,7 +15,7 @@ import {
 import { sampleData, emptyData } from '../src/lib/seed';
 import { parseAmountExpr, splitAmounts } from '../src/lib/util';
 import { computeLpgDay, createLpgDay, lpgOpeningStock, sampleLpg } from '../src/lib/lpg';
-import { computeWineDay, createWineDay, sampleWine, wineOpeningStock } from '../src/lib/wine';
+import { computeWineDay, createWineDay, sampleWine, wineCategoryOptions, wineOpeningStock } from '../src/lib/wine';
 
 describe('notebook page 19/06/2026', () => {
   const data = sampleData();
@@ -361,5 +361,20 @@ describe('wine shop', () => {
     const c = computeWineDay(data, data.wineDays!['2026-06-19']);
     expect(c.hasCost).toBe(true);
     expect(c.profitPaise).toBe(c.rows.reduce((a, r) => a + r.sold * (r.row.mrpPaise - r.product.costPaise), 0));
+  });
+});
+
+describe('wine categories', () => {
+  it('dropdown offers built-in, own and used categories without duplicates', () => {
+    const opts = wineCategoryOptions({
+      shopName: 'x',
+      customCategories: ['Bhang', 'whisky'],
+      products: [{ id: 'p', name: 'A', size: '750 ml', category: 'Toddy', mrpPaise: 1, costPaise: 0, openingStock: 0, lowStock: 0, active: true }],
+    });
+    expect(opts).toContain('Scotch Whisky');
+    expect(opts).toContain('Breezer / RTD');
+    expect(opts).toContain('Bhang');
+    expect(opts).toContain('Toddy');
+    expect(opts.filter((c) => c.toLowerCase() === 'whisky')).toHaveLength(1);
   });
 });

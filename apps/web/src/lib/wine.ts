@@ -1,7 +1,37 @@
 import type { AppData, WineDay, WineProduct, WineRow, WineSettings } from './types';
 import { sumPaise, uid } from './util';
 
-export const WINE_CATEGORIES = ['Whisky', 'Rum', 'Vodka', 'Brandy', 'Gin', 'Beer', 'Wine', 'Country liquor', 'Other'];
+/** Built-in categories offered in the Add brand dropdown. */
+export const WINE_CATEGORIES = [
+  'Whisky',
+  'Scotch Whisky',
+  'Single Malt',
+  'Rum',
+  'Vodka',
+  'Brandy',
+  'Gin',
+  'Tequila',
+  'Liqueur',
+  'Wine',
+  'Sparkling / Champagne',
+  'Beer (Strong)',
+  'Beer (Mild / Lager)',
+  'Beer (Can)',
+  'Breezer / RTD',
+  'Country liquor',
+  'Foreign liquor (IMFL)',
+  'Other',
+];
+
+/** Dropdown options: built-in, the shop's own, and any already used by a brand. */
+export function wineCategoryOptions(st: WineSettings): string[] {
+  const out: string[] = [];
+  for (const c of [...WINE_CATEGORIES, ...(st.customCategories ?? []), ...st.products.map((p) => p.category)]) {
+    const v = c.trim();
+    if (v && !out.some((x) => x.toLowerCase() === v.toLowerCase())) out.push(v);
+  }
+  return out;
+}
 
 const product = (name: string, size: string, category: string, mrp: number, cost: number, opening: number, lowStock = 6): WineProduct => ({
   id: uid(),

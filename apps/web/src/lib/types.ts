@@ -269,6 +269,8 @@ export interface LpgDay {
 export interface WineProduct {
   id: string;
   name: string;
+  /** Name exactly as printed on the purchase / excise bill (optional). */
+  billName?: string;
   /** Bottle size shown next to the name, e.g. "750 ml", "650 ml". */
   size: string;
   /** Group for filtering: Whisky, Rum, Beer, Wine, Country … */
@@ -287,6 +289,8 @@ export interface WineProduct {
 export interface WineSettings {
   shopName: string;
   products: WineProduct[];
+  /** Categories the shop added itself, on top of the built-in list. */
+  customCategories?: string[];
 }
 
 /**
