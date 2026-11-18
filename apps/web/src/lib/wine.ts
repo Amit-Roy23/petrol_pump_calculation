@@ -1,4 +1,4 @@
-import type { AppData, WineDay, WineInvoice, WineProduct, WineRow, WineSettings } from './types';
+import type { AppData, WineDay, WineInvoice, WineProduct, WineRow, WineSale, WineSettings } from './types';
 import { sumPaise, uid } from './util';
 
 /** Built-in categories offered in the Add brand dropdown. */
@@ -60,7 +60,7 @@ export function wineDays(data: AppData): Record<string, WineDay> {
 export function createWineDay(data: AppData, date: string): WineDay {
   const rows: Record<string, WineRow> = {};
   for (const p of wineSettings(data).products) if (p.active && !p.deleted) rows[p.id] = { mrpPaise: p.mrpPaise, received: 0, breakage: 0, closing: '' };
-  return { date, rows, invoices: [], online: [], card: [], dues: [], expenses: [], cashCountedPaise: 0, remark: '', locked: false, updatedAt: new Date().toISOString() };
+  return { date, rows, invoices: [], sales: [], online: [], card: [], dues: [], expenses: [], cashCountedPaise: 0, remark: '', locked: false, updatedAt: new Date().toISOString() };
 }
 
 const isCount = (s: string) => /^\d+$/.test(s.trim());
@@ -72,12 +72,26 @@ export function invoiceQty(day: WineDay, productId: string): number {
   return n;
 }
 
-/** Closing stock after a day: the count if entered, otherwise nothing sold. */
+/** Bottles of a product sold on counter bills that day. */
+export function billedQty(day: WineDay, productId: string): number {
+  let n = 0;
+  for (const s of day.sales ?? []) for (const l of s.lines) if (l.productId === productId) n += l.qty;
+  return n;
+}
+
+export function saleTotal(s: WineSale): number {
+  return s.lines.reduce((a, l) => a + l.qty * l.mrpPaise, 0);
+}
+
+/**
+ * Closing stock after a day: the physical count if entered, otherwise
+ * what's left after the counter bills.
+ */
 function closingOf(open: number, day: WineDay, productId: string): number {
   const row = day.rows[productId];
   const received = (row?.received ?? 0) + invoiceQty(day, productId);
   const available = open + received - (row?.breakage ?? 0);
-  return row && isCount(row.closing) ? Number(row.closing) : available;
+  return row && isCount(row.closing) ? Number(row.closing) : available - billedQty(day, productId);
 }
 
 /** Stock of every product at the end of every recorded day, in date order. */
@@ -111,6 +125,15 @@ export interface WineRowCalc {
   invoiceQty: number;
   /** All bottles received: typed + invoices. */
   receivedTotal: number;
+  /** Bottles sold on counter bills. */
+  billed: number;
+  /** Bottles left on the shelf right now (count if entered, else available − billed). */
+  inStock: number;
+  /**
+   * Counted sale minus billed: positive = bottles gone without a bill
+   * (charged as cash), negative = count shows fewer sold than billed.
+   */
+  unbilled: number;
   /** opening + received − breakage. */
   available: number;
   counted: boolean;
@@ -130,6 +153,12 @@ export interface WineDayCalc {
   bottlesReceived: number;
   bottlesBroken: number;
   countedRows: number;
+  /** Counter bills made today and their total. */
+  billCount: number;
+  billedPaise: number;
+  billedCashPaise: number;
+  /** Bottles the count shows sold beyond the bills. */
+  unbilledBottles: number;
   salePaise: number;
   /** Sale paid in cash: sale − online − card − due. */
   cashSalePaise: number;
@@ -155,8 +184,8 @@ export function computeWineDay(data: AppData, day: WineDay): WineDayCalc {
   const products = wineSettings(data).products;
   const opening = wineOpeningStock(data, day.date);
   const rows: WineRowCalc[] = products
-    .filter((p) => (p.active && !p.deleted) || day.rows[p.id] || invoiceQty(day, p.id))
-    .filter((p) => !p.deleted || (day.rows[p.id] && (day.rows[p.id].received || day.rows[p.id].breakage || day.rows[p.id].closing)) || invoiceQty(day, p.id))
+    .filter((p) => (p.active && !p.deleted) || day.rows[p.id] || invoiceQty(day, p.id) || billedQty(day, p.id))
+    .filter((p) => !p.deleted || (day.rows[p.id] && (day.rows[p.id].received || day.rows[p.id].breakage || day.rows[p.id].closing)) || invoiceQty(day, p.id) || billedQty(day, p.id))
     .map((p) => {
       const row = day.rows[p.id] ?? { mrpPaise: p.mrpPaise, received: 0, breakage: 0, closing: '' };
       const open = opening[p.id] ?? p.openingStock;
@@ -164,15 +193,20 @@ export function computeWineDay(data: AppData, day: WineDay): WineDayCalc {
       const receivedTotal = row.received + inv;
       const available = open + receivedTotal - row.breakage;
       const counted = isCount(row.closing);
-      const closing = counted ? Number(row.closing) : available;
-      const error = closing > available || available < 0;
-      const sold = error ? 0 : available - closing;
+      const billed = billedQty(day, p.id);
+      const closing = counted ? Number(row.closing) : available - billed;
+      const error = closing > available || available < 0 || (!counted && closing < 0);
+      // Counted: sold = what left the shelf. Not counted: what was billed.
+      const sold = error ? (counted ? 0 : billed) : available - closing;
       return {
         product: p,
         row,
         opening: open,
         invoiceQty: inv,
         receivedTotal,
+        billed,
+        inStock: closing,
+        unbilled: counted ? sold - billed : 0,
         available,
         counted,
         closing,
@@ -184,9 +218,11 @@ export function computeWineDay(data: AppData, day: WineDay): WineDayCalc {
       };
     });
   const salePaise = rows.reduce((a, r) => a + r.amountPaise, 0);
-  const onlinePaise = sumPaise(day.online);
-  const cardPaise = sumPaise(day.card);
-  const duePaise = sumPaise(day.dues);
+  const sales = day.sales ?? [];
+  const billByMode = (m: string) => sales.filter((x) => x.mode === m).reduce((a, x) => a + saleTotal(x), 0);
+  const onlinePaise = sumPaise(day.online) + billByMode('online');
+  const cardPaise = sumPaise(day.card) + billByMode('card');
+  const duePaise = sumPaise(day.dues) + billByMode('due');
   const expensesPaise = sumPaise(day.expenses);
   const expectedCashPaise = salePaise - onlinePaise - cardPaise - duePaise - expensesPaise;
   return {
@@ -196,6 +232,10 @@ export function computeWineDay(data: AppData, day: WineDay): WineDayCalc {
     bottlesReceived: rows.reduce((a, r) => a + r.receivedTotal, 0),
     bottlesBroken: rows.reduce((a, r) => a + r.row.breakage, 0),
     countedRows: rows.filter((r) => r.counted).length,
+    billCount: sales.length,
+    billedPaise: sales.reduce((a, x) => a + saleTotal(x), 0),
+    billedCashPaise: billByMode('cash'),
+    unbilledBottles: rows.reduce((a, r) => a + Math.max(0, r.unbilled), 0),
     salePaise,
     cashSalePaise: salePaise - onlinePaise - cardPaise - duePaise,
     invoiceCount: (day.invoices ?? []).length,
@@ -234,7 +274,7 @@ export function liveProducts(st: WineSettings): WineProduct[] {
 export function productUsed(data: AppData, productId: string): boolean {
   return Object.values(wineDays(data)).some((d) => {
     const r = d.rows[productId];
-    return !!(r && (r.received || r.breakage || r.closing)) || invoiceQty(d, productId) > 0;
+    return !!(r && (r.received || r.breakage || r.closing)) || invoiceQty(d, productId) > 0 || billedQty(d, productId) > 0;
   });
 }
 

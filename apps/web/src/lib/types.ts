@@ -328,8 +328,30 @@ export interface WineInvoice {
   note: string;
 }
 
+export type WinePayMode = 'cash' | 'online' | 'card' | 'due';
+
+export interface WineSaleLine {
+  productId: string;
+  qty: number;
+  /** Price per bottle charged on this bill, in paise. */
+  mrpPaise: number;
+}
+
+/** One counter bill: bottles sold to a customer and how they paid. */
+export interface WineSale {
+  id: string;
+  /** HH:MM when the bill was made. */
+  time: string;
+  lines: WineSaleLine[];
+  mode: WinePayMode;
+  /** Required for due; optional otherwise. */
+  customer: string;
+}
+
 export interface WineDay {
   date: string;
+  /** Bills made at the counter (Sell screen). */
+  sales?: WineSale[];
   rows: Record<string, WineRow>; // productId → row
   /** Purchase invoices received this day; their bottles add to stock. */
   invoices?: WineInvoice[];

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { HashRouter, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { BarChart3, Flame, Fuel, Gauge, HandCoins, Home, Package, Settings as SettingsIcon, Users, Wallet, Wine } from 'lucide-react';
+import { BarChart3, Flame, Fuel, Gauge, HandCoins, Home, Package, Settings as SettingsIcon, ShoppingCart, Users, Wallet, Wine } from 'lucide-react';
 import { useStore } from './lib/store';
 import { cn } from './lib/util';
 import type { TKey } from './lib/i18n';
@@ -17,6 +17,7 @@ import LpgReports from './pages/LpgReports';
 import { lpgSettings } from './lib/lpg';
 import { wineSettings } from './lib/wine';
 import WineSheet from './pages/WineSheet';
+import WineSell from './pages/WineSell';
 import WineStock from './pages/WineStock';
 import WineReports from './pages/WineReports';
 import type { Business } from './lib/types';
@@ -39,12 +40,13 @@ const LPG_NAV: typeof NAV = [
 ];
 
 const WINE_NAV: typeof NAV = [
+  { to: '/wine/sell', key: 'navWineSell', short: 'navWineSellShort', icon: ShoppingCart },
   { to: '/wine', key: 'navWineSheet', short: 'navWineSheetShort', icon: Wine },
   { to: '/wine/stock', key: 'navWineStock', short: 'navWineStockShort', icon: Package },
   { to: '/wine/reports', key: 'navWineReports', short: 'navWineReportsShort', icon: BarChart3 },
 ];
 
-const HOME: Record<Business, string> = { petrol: '/', lpg: '/lpg', wine: '/wine' };
+const HOME: Record<Business, string> = { petrol: '/', lpg: '/lpg', wine: '/wine/sell' };
 const businessOfPath = (p: string): Business => (p.startsWith('/lpg') ? 'lpg' : p.startsWith('/wine') ? 'wine' : 'petrol');
 
 /** Petrol ⇄ LPG switch. Each business has its own pages; Settings is shared. */
@@ -205,6 +207,7 @@ function Shell() {
             <Route path="/lpg" element={<LpgSheet />} />
             <Route path="/lpg/reports" element={<LpgReports />} />
             <Route path="/wine" element={<WineSheet />} />
+            <Route path="/wine/sell" element={<WineSell />} />
             <Route path="/wine/stock" element={<WineStock />} />
             <Route path="/wine/reports" element={<WineReports />} />
             <Route path="/settings" element={<SettingsPage />} />
@@ -215,7 +218,7 @@ function Shell() {
 
       {/* Mobile bottom nav */}
       <nav className="no-print fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
-        <div className={cn('mx-auto grid max-w-lg', isLpg ? 'grid-cols-3' : isWine ? 'grid-cols-4' : 'grid-cols-6')}>
+        <div className={cn('mx-auto grid max-w-lg', isLpg ? 'grid-cols-3' : isWine ? 'grid-cols-5' : 'grid-cols-6')}>
           {(business === 'petrol' ? NAV : [...nav, { to: '/settings', key: 'navSettings' as TKey, icon: SettingsIcon }]).map(({ to, key, short, icon: Icon }) => (
             <NavLink
               key={to}
