@@ -1,12 +1,14 @@
 import { useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, Cloud, Flame, Database, Download, QrCode, LogOut, RefreshCw, Fuel, Languages, Plus, RotateCcw, Sparkles, Trash2, Upload, Warehouse } from 'lucide-react';
+import { Clock, Cloud, Flame, Wine, Database, Download, QrCode, LogOut, RefreshCw, Fuel, Languages, Plus, RotateCcw, Sparkles, Trash2, Upload, Warehouse } from 'lucide-react';
 import { RoundingMode } from '@petrolpump/shared';
 import { useStore } from '../lib/store';
 import { emptyData, sampleData } from '../lib/seed';
 import type { AppData, FuelTone, Machine, PaymentMethod, ShiftTemplate } from '../lib/types';
 import { paymentMethods, shiftTemplates } from '../lib/compute';
 import { lpgSettings } from '../lib/lpg';
+import { wineSettings } from '../lib/wine';
+import { Link } from 'react-router-dom';
 import type { LpgSettings } from '../lib/types';
 import { cn, downloadFile, todayISO, uid } from '../lib/util';
 import { Card, Field, MoneyInput, SectionTitle, Segmented, toneClass } from '../components/ui';
@@ -82,6 +84,7 @@ export default function SettingsPage() {
       </div>
 
       {business === 'lpg' && <LpgSettingsCard />}
+      {business === 'wine' && <WineSettingsCard />}
 
       {/* Products */}
       <Card className="p-4 sm:p-5">
@@ -143,6 +146,7 @@ export default function SettingsPage() {
       </Card>
 
       {business !== 'lpg' && <LpgSettingsCard />}
+      {business !== 'wine' && <WineSettingsCard />}
 
       {/* Extra payment methods (PPM, PPS …) */}
       <Card className="p-4 sm:p-5">
@@ -568,6 +572,36 @@ function LpgSettingsCard() {
           })}
         </div>
       </div>
+    </Card>
+  );
+}
+
+/** Wine shop name; brands and prices live on the Brands & Stock page. */
+function WineSettingsCard() {
+  const { data, update, t } = useStore();
+  const st = wineSettings(data);
+  return (
+    <Card className="border-premium/40 p-4 sm:p-5">
+      <SectionTitle
+        icon={<Wine className="h-5 w-5 text-premium" />}
+        title={t('wineSettingsTitle')}
+        right={
+          <Link to="/wine/stock" className="btn-ghost py-2 text-sm">
+            {t('navWineStock')} →
+          </Link>
+        }
+      />
+      <Field label={t('wineShopName')}>
+        <input
+          className="input font-semibold"
+          value={st.shopName}
+          onChange={(e) =>
+            update((d) => {
+              d.settings.wine = { ...structuredClone(wineSettings(d)), shopName: e.target.value };
+            })
+          }
+        />
+      </Field>
     </Card>
   );
 }

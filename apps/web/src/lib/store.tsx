@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import type { AppData, Business, DayRecord, LpgDay } from './types';
+import type { AppData, Business, DayRecord, LpgDay, WineDay } from './types';
 import { createLpgDay } from './lpg';
+import { createWineDay } from './wine';
 import { createDay } from './compute';
 import { emptyData } from './seed';
 import { todayISO } from './util';
@@ -57,6 +58,9 @@ function applyPatch(base: AppData, p: Patch): AppData {
   if (p.lpgDays || p.deleteLpgDays) next.lpgDays = { ...(next.lpgDays ?? {}) };
   for (const d of p.lpgDays ?? []) next.lpgDays![d.date] = d;
   for (const d of p.deleteLpgDays ?? []) delete next.lpgDays![d];
+  if (p.wineDays || p.deleteWineDays) next.wineDays = { ...(next.wineDays ?? {}) };
+  for (const d of p.wineDays ?? []) next.wineDays![d.date] = d;
+  for (const d of p.deleteWineDays ?? []) delete next.wineDays![d];
   return next;
 }
 
@@ -96,6 +100,10 @@ interface Ctx {
   getLpgDay: (date: string) => { day: LpgDay; exists: boolean };
   /** Edit an LPG day; created on first edit. Ignored when the day is locked. */
   updateLpgDay: (date: string, fn: (day: LpgDay, data: AppData) => void) => void;
+  /** Wine day for a date, created in memory (not saved) if missing. */
+  getWineDay: (date: string) => { day: WineDay; exists: boolean };
+  /** Edit a wine day; created on first edit. Ignored when the day is locked. */
+  updateWineDay: (date: string, fn: (day: WineDay, data: AppData) => void) => void;
   /** Which business this device is looking at (per device, not synced). */
   business: Business;
   setBusiness: (b: Business) => void;
@@ -178,10 +186,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const synced = syncedRef.current;
       const res = await api.snapshot(initialLoad || !synced ? undefined : synced.rev);
       if ('unchanged' in res) return;
-      const serverEmpty = !res.settings && Object.keys(res.days).length === 0 && Object.keys(res.lpgDays ?? {}).length === 0;
+      const serverEmpty = !res.settings && Object.keys(res.days).length === 0 && Object.keys(res.lpgDays ?? {}).length === 0 && Object.keys(res.wineDays ?? {}).length === 0;
       if (serverEmpty) {
         // Brand-new database: this device's data (if any) becomes the first copy.
-        setSynced(freshRef.current ? snapshotOf(dataRef.current, res.rev) : { rev: res.rev, settings: '', customers: '', receipts: '', days: {}, lpgDays: {} });
+        setSynced(freshRef.current ? snapshotOf(dataRef.current, res.rev) : { rev: res.rev, settings: '', customers: '', receipts: '', days: {}, lpgDays: {}, wineDays: {} });
       } else {
         const pending = synced ? diff(dataRef.current, synced) : null;
         const serverData = fromServer(res, dataRef.current);
@@ -210,7 +218,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     patchCloud({ status: 'saving' });
     try {
       const { rev } = await api.push(patch);
-      const next: SyncedState = { ...synced, days: { ...synced.days }, lpgDays: { ...(synced.lpgDays ?? {}) } };
+      const next: SyncedState = { ...synced, days: { ...synced.days }, lpgDays: { ...(synced.lpgDays ?? {}) }, wineDays: { ...(synced.wineDays ?? {}) } };
       if (patch.settings) next.settings = settingsKey(patch.settings);
       if (patch.customers) next.customers = JSON.stringify(patch.customers);
       if (patch.receipts) next.receipts = JSON.stringify(patch.receipts);
@@ -218,6 +226,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       for (const d of patch.deleteDays ?? []) delete next.days[d];
       for (const d of patch.lpgDays ?? []) next.lpgDays![d.date] = JSON.stringify(d);
       for (const d of patch.deleteLpgDays ?? []) delete next.lpgDays![d];
+      for (const d of patch.wineDays ?? []) next.wineDays![d.date] = JSON.stringify(d);
+      for (const d of patch.deleteWineDays ?? []) delete next.wineDays![d];
       // Someone else wrote in between → keep the old rev so the next pull fetches their changes.
       const otherWriter = rev !== synced.rev + 1;
       next.rev = otherWriter ? synced.rev : rev;
@@ -392,7 +402,31 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [update]
   );
 
-  const [business, setBusinessState] = useState<Business>(() => (readRaw(BUSINESS_KEY) === 'lpg' ? 'lpg' : 'petrol'));
+  const getWineDay = useCallback(
+    (d: string) => {
+      const existing = data.wineDays?.[d];
+      return existing ? { day: existing, exists: true } : { day: createWineDay(data, d), exists: false };
+    },
+    [data]
+  );
+
+  const updateWineDay = useCallback(
+    (d: string, fn: (day: WineDay, data: AppData) => void) =>
+      update((draft) => {
+        draft.wineDays = draft.wineDays ?? {};
+        if (!draft.wineDays[d]) draft.wineDays[d] = createWineDay(draft, d);
+        const day = draft.wineDays[d];
+        if (day.locked) return;
+        fn(day, draft);
+        day.updatedAt = new Date().toISOString();
+      }),
+    [update]
+  );
+
+  const [business, setBusinessState] = useState<Business>(() => {
+    const saved = readRaw(BUSINESS_KEY);
+    return saved === 'lpg' || saved === 'wine' ? saved : 'petrol';
+  });
   const setBusiness = useCallback((b: Business) => {
     setBusinessState(b);
     writeLS(BUSINESS_KEY, b);
@@ -422,6 +456,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     updateDay,
     getLpgDay,
     updateLpgDay,
+    getWineDay,
+    updateWineDay,
     business,
     setBusiness,
     t,

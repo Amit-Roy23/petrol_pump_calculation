@@ -1,4 +1,4 @@
-import type { AppData, Customer, DayRecord, DueReceipt, LpgDay, Settings } from './types';
+import type { AppData, Customer, DayRecord, DueReceipt, LpgDay, Settings, WineDay } from './types';
 
 export interface Health {
   ok: boolean;
@@ -14,6 +14,7 @@ export interface ServerSnapshot {
   days: Record<string, DayRecord>;
   /** Missing from servers deployed before LPG existed. */
   lpgDays?: Record<string, LpgDay>;
+  wineDays?: Record<string, WineDay>;
 }
 
 export interface Patch {
@@ -24,6 +25,8 @@ export interface Patch {
   deleteDays?: string[];
   lpgDays?: LpgDay[];
   deleteLpgDays?: string[];
+  wineDays?: WineDay[];
+  deleteWineDays?: string[];
 }
 
 export class ApiError extends Error {
@@ -105,6 +108,7 @@ export interface SyncedState {
   days: Record<string, string>;
   /** Optional: sync state saved before LPG existed has none. */
   lpgDays?: Record<string, string>;
+  wineDays?: Record<string, string>;
 }
 
 export function snapshotOf(data: AppData, rev: number): SyncedState {
@@ -112,9 +116,12 @@ export function snapshotOf(data: AppData, rev: number): SyncedState {
   for (const [d, rec] of Object.entries(data.days)) days[d] = JSON.stringify(rec);
   const lpgDays: Record<string, string> = {};
   for (const [d, rec] of Object.entries(data.lpgDays ?? {})) lpgDays[d] = JSON.stringify(rec);
+  const wineDays: Record<string, string> = {};
+  for (const [d, rec] of Object.entries(data.wineDays ?? {})) wineDays[d] = JSON.stringify(rec);
   return {
     rev,
     lpgDays,
+    wineDays,
     settings: settingsKey(data.settings),
     customers: JSON.stringify(data.customers),
     receipts: JSON.stringify(data.receipts),
@@ -141,6 +148,14 @@ export function diff(data: AppData, synced: SyncedState): Patch | null {
   if (changedLpg.length) patch.lpgDays = changedLpg;
   const deletedLpg = Object.keys(syncedLpg).filter((d) => !lpg[d]);
   if (deletedLpg.length) patch.deleteLpgDays = deletedLpg;
+  const syncedWine = synced.wineDays ?? {};
+  const wine = data.wineDays ?? {};
+  const changedWine = Object.entries(wine)
+    .filter(([d, rec]) => syncedWine[d] !== JSON.stringify(rec))
+    .map(([, rec]) => rec);
+  if (changedWine.length) patch.wineDays = changedWine;
+  const deletedWine = Object.keys(syncedWine).filter((d) => !wine[d]);
+  if (deletedWine.length) patch.deleteWineDays = deletedWine;
   return Object.keys(patch).length ? patch : null;
 }
 
@@ -153,5 +168,6 @@ export function fromServer(s: ServerSnapshot, local: AppData): AppData {
     customers: s.customers,
     receipts: s.receipts,
     lpgDays: s.lpgDays ?? {},
+    wineDays: s.wineDays ?? {},
   };
 }

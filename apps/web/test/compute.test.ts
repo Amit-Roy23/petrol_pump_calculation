@@ -15,6 +15,7 @@ import {
 import { sampleData, emptyData } from '../src/lib/seed';
 import { parseAmountExpr, splitAmounts } from '../src/lib/util';
 import { computeLpgDay, createLpgDay, lpgOpeningStock, sampleLpg } from '../src/lib/lpg';
+import { computeWineDay, createWineDay, sampleWine, wineOpeningStock } from '../src/lib/wine';
 
 describe('notebook page 19/06/2026', () => {
   const data = sampleData();
@@ -299,5 +300,66 @@ describe('LPG – handwritten page 24/10/2018', () => {
     const day = createLpgDay(data, '2018-10-25');
     day.refills.dom142 = { ratePaise: 44200, qty: 1, onlinePaise: 50000, duePaise: 0 };
     expect(computeLpgDay(data, day).hasError).toBe(true);
+  });
+});
+
+describe('wine shop', () => {
+  function wineData() {
+    const data = sampleData();
+    const w = sampleWine();
+    data.settings.wine = w.settings;
+    data.wineDays = w.days;
+    return data;
+  }
+
+  it('sold = opening + received − breakage − closing, amount = sold × MRP', () => {
+    const data = wineData();
+    const c = computeWineDay(data, data.wineDays!['2026-06-19']);
+    const byName = (n: string, size: string) => c.rows.find((r) => r.product.name === n && r.product.size === size)!;
+    expect(byName('Classic Whisky', '750 ml').sold).toBe(7); // 48 − 41
+    expect(byName('Classic Whisky', '180 ml').sold).toBe(36); // 120 + 48 − 132
+    const strong = byName('Strong Beer', '650 ml');
+    expect(strong.sold).toBe(70); // 144 + 96 − 2 broken − 168
+    expect(strong.amountPaise).toBe(70 * 18000);
+    expect(c.bottlesBroken).toBe(2);
+    expect(c.salePaise).toBe(c.rows.reduce((a, r) => a + r.amountPaise, 0));
+  });
+
+  it('works out expected cash and short/excess', () => {
+    const data = wineData();
+    const day = data.wineDays!['2026-06-19'];
+    const c0 = computeWineDay(data, day);
+    expect(c0.expectedCashPaise).toBe(c0.salePaise - c0.onlinePaise - c0.cardPaise - c0.duePaise - c0.expensesPaise);
+    day.cashCountedPaise = c0.expectedCashPaise - 5000;
+    expect(computeWineDay(data, day).cashDiffPaise).toBe(-5000);
+  });
+
+  it('carries closing stock to the next day and treats uncounted as no sale', () => {
+    const data = wineData();
+    const next = createWineDay(data, '2026-06-20');
+    const w750 = data.settings.wine!.products[0];
+    expect(wineOpeningStock(data, '2026-06-20')[w750.id]).toBe(41);
+    const c = computeWineDay(data, next);
+    expect(c.rows[0].opening).toBe(41);
+    expect(c.rows[0].sold).toBe(0); // not counted yet
+    expect(c.salePaise).toBe(0);
+  });
+
+  it('flags a closing count higher than available stock', () => {
+    const data = wineData();
+    const day = createWineDay(data, '2026-06-20');
+    const id = data.settings.wine!.products[0].id;
+    day.rows[id].closing = '999';
+    const c = computeWineDay(data, day);
+    expect(c.rows[0].error).toBe(true);
+    expect(c.hasError).toBe(true);
+    expect(c.rows[0].sold).toBe(0);
+  });
+
+  it('profit uses purchase cost', () => {
+    const data = wineData();
+    const c = computeWineDay(data, data.wineDays!['2026-06-19']);
+    expect(c.hasCost).toBe(true);
+    expect(c.profitPaise).toBe(c.rows.reduce((a, r) => a + r.sold * (r.row.mrpPaise - r.product.costPaise), 0));
   });
 });

@@ -70,6 +70,8 @@ export interface Settings {
   shiftTemplates?: ShiftTemplate[];
   /** LPG business setup (optional for older data – see lpgSettings()). */
   lpg?: LpgSettings;
+  /** Wine shop setup (optional for older data – see wineSettings()). */
+  wine?: WineSettings;
 }
 
 export interface NozzleReading {
@@ -170,7 +172,7 @@ export interface DueReceipt {
 
 /* ---------------- LPG business ---------------- */
 
-export type Business = 'petrol' | 'lpg';
+export type Business = 'petrol' | 'lpg' | 'wine';
 
 /** A cylinder size the LPG agency handles, e.g. Domestic 14.2 kg. */
 export interface LpgCylinder {
@@ -261,6 +263,58 @@ export interface LpgDay {
   updatedAt: string;
 }
 
+/* ---------------- Wine shop ---------------- */
+
+/** One brand + bottle size, e.g. "Classic Whisky 750 ml". */
+export interface WineProduct {
+  id: string;
+  name: string;
+  /** Bottle size shown next to the name, e.g. "750 ml", "650 ml". */
+  size: string;
+  /** Group for filtering: Whisky, Rum, Beer, Wine, Country … */
+  category: string;
+  /** Selling price (MRP) per bottle in paise, copied into each new day. */
+  mrpPaise: number;
+  /** Purchase cost per bottle in paise (optional – 0 hides profit). */
+  costPaise: number;
+  /** Bottles in stock on the first day the app is used. */
+  openingStock: number;
+  /** Warn when closing stock falls to this many bottles or fewer (0 = off). */
+  lowStock: number;
+  active: boolean;
+}
+
+export interface WineSettings {
+  shopName: string;
+  products: WineProduct[];
+}
+
+/**
+ * One brand on one day. Closing is the physical count; blank means "not
+ * counted yet" and is treated as no sale.
+ */
+export interface WineRow {
+  mrpPaise: number;
+  received: number;
+  breakage: number;
+  closing: string;
+}
+
+export interface WineDay {
+  date: string;
+  rows: Record<string, WineRow>; // productId → row
+  online: Entry[];
+  card: Entry[];
+  /** Credit given: label = customer name. */
+  dues: LineItem[];
+  expenses: LineItem[];
+  /** Cash physically counted at day end (0 = not counted yet). */
+  cashCountedPaise: number;
+  remark: string;
+  locked: boolean;
+  updatedAt: string;
+}
+
 export interface AppData {
   version: 1;
   settings: Settings;
@@ -269,4 +323,6 @@ export interface AppData {
   receipts: DueReceipt[];
   /** LPG business days (optional for data saved before LPG existed). */
   lpgDays?: Record<string, LpgDay>;
+  /** Wine shop days (optional for older data). */
+  wineDays?: Record<string, WineDay>;
 }

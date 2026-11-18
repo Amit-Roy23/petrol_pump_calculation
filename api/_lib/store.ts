@@ -11,6 +11,8 @@ export interface Snapshot {
   days: Record<string, Json>;
   /** LPG business days, keyed by date. */
   lpgDays: Record<string, Json>;
+  /** Wine shop days, keyed by date. */
+  wineDays: Record<string, Json>;
 }
 
 export interface Patch {
@@ -21,6 +23,8 @@ export interface Patch {
   deleteDays?: string[];
   lpgDays?: Json[];
   deleteLpgDays?: string[];
+  wineDays?: Json[];
+  deleteWineDays?: string[];
 }
 
 export interface Store {
@@ -78,6 +82,7 @@ export function mongoStore(): Store {
         d.collection<DayDoc>('days').find({}).toArray(),
         d.collection<DayDoc>('lpg_days').find({}).toArray(),
       ]);
+      const wineDays = await d.collection<DayDoc>('wine_days').find({}).toArray();
       const get = (id: string) => kv.find((x) => x._id === id)?.value;
       const out: Snapshot = {
         rev: (get('meta') as { rev?: number } | undefined)?.rev ?? 0,
@@ -86,9 +91,11 @@ export function mongoStore(): Store {
         receipts: (get('receipts') as Json[]) ?? [],
         days: {},
         lpgDays: {},
+        wineDays: {},
       };
       for (const day of days) out.days[day._id] = day.value;
       for (const day of lpgDays) out.lpgDays[day._id] = day.value;
+      for (const day of wineDays) out.wineDays[day._id] = day.value;
       return out;
     },
     async apply(patch) {
@@ -113,6 +120,13 @@ export function mongoStore(): Store {
         ...(patch.deleteLpgDays ?? []).map((date) => ({ deleteOne: { filter: { _id: date } } })),
       ];
       if (lpgWrites.length) ops.push(d.collection<DayDoc>('lpg_days').bulkWrite(lpgWrites, { ordered: false }));
+      const wineWrites = [
+        ...(patch.wineDays ?? []).map((day) => ({
+          replaceOne: { filter: { _id: String(day.date) }, replacement: { value: day, updatedAt: now }, upsert: true },
+        })),
+        ...(patch.deleteWineDays ?? []).map((date) => ({ deleteOne: { filter: { _id: date } } })),
+      ];
+      if (wineWrites.length) ops.push(d.collection<DayDoc>('wine_days').bulkWrite(wineWrites, { ordered: false }));
       await Promise.all(ops);
       const meta = await kv.findOneAndUpdate(
         { _id: 'meta' },
@@ -127,7 +141,7 @@ export function mongoStore(): Store {
 /* ---------------- In-memory implementation (tests / local) ---------------- */
 
 export function memoryStore(): Store {
-  const s: Snapshot = { rev: 0, settings: null, customers: [], receipts: [], days: {}, lpgDays: {} };
+  const s: Snapshot = { rev: 0, settings: null, customers: [], receipts: [], days: {}, lpgDays: {}, wineDays: {} };
   return {
     async rev() {
       return s.rev;
@@ -143,6 +157,8 @@ export function memoryStore(): Store {
       for (const date of p.deleteDays ?? []) delete s.days[date];
       for (const day of p.lpgDays ?? []) s.lpgDays[String(day.date)] = structuredClone(day);
       for (const date of p.deleteLpgDays ?? []) delete s.lpgDays[date];
+      for (const day of p.wineDays ?? []) s.wineDays[String(day.date)] = structuredClone(day);
+      for (const date of p.deleteWineDays ?? []) delete s.wineDays[date];
       return ++s.rev;
     },
   };
