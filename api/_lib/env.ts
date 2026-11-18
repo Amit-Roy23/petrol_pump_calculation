@@ -13,17 +13,3 @@ export function missingEnv(): string[] {
   if (!appPassword()) missing.push('APP_PASSWORD');
   return missing;
 }
-
-/** WhatsApp Cloud API (Meta) settings for automatic reminders. All optional. */
-export function whatsappConfig() {
-  const token = process.env.WHATSAPP_TOKEN || '';
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || '';
-  return {
-    token,
-    phoneNumberId,
-    /** Approved message template name (default "due_reminder"). */
-    template: process.env.WHATSAPP_TEMPLATE || 'due_reminder',
-    apiVersion: process.env.WHATSAPP_API_VERSION || 'v21.0',
-    ready: !!token && !!phoneNumberId,
-  };
-}

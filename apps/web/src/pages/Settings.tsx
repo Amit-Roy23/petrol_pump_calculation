@@ -7,7 +7,7 @@ import { emptyData, sampleData } from '../lib/seed';
 import type { AppData, FuelTone, Machine, PaymentMethod, ShiftTemplate } from '../lib/types';
 import { paymentMethods, shiftTemplates } from '../lib/compute';
 import { lpgSettings } from '../lib/lpg';
-import { reminderSettings, TEMPLATE_TEXT } from '../lib/whatsapp';
+import { reminderSettings } from '../lib/whatsapp';
 import { wineSettings } from '../lib/wine';
 import { Link } from 'react-router-dom';
 import type { LpgSettings } from '../lib/types';
@@ -181,21 +181,6 @@ export default function SettingsPage() {
               ]}
             />
           </div>
-        </div>
-        <div className={cn('mt-4 rounded-xl border p-3 text-sm', cloud.waAuto ? 'border-[#25D366]/50 bg-[#25D366]/10' : 'border-dashed border-line')}>
-          <div className="font-semibold">{t('waAutoTitle')}</div>
-          <div className={cn('mt-0.5', cloud.waAuto ? 'font-semibold text-[#1da851]' : 'text-ink-2')}>{cloud.waAuto ? `✓ ${t('waAutoOn')}` : t('waAutoOff')}</div>
-          {!cloud.waAuto && (
-            <>
-              <p className="mt-2 text-xs text-ink-3">{t('waAutoHowTo')}</p>
-              <div className="label mt-3">{t('templateToSubmit')}</div>
-              {(['en', 'bn'] as const).map((l) => (
-                <pre key={l} className="mt-1 whitespace-pre-wrap rounded-lg bg-sunk px-3 py-2 font-sans text-xs leading-relaxed">
-                  <b>{l === 'en' ? 'English (en)' : 'Bengali (bn)'}:</b> {TEMPLATE_TEXT[l]}
-                </pre>
-              ))}
-            </>
-          )}
         </div>
       </Card>
 

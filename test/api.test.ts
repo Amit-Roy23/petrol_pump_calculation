@@ -3,7 +3,6 @@ import { Readable } from 'stream';
 import { dataHandler, health, login } from '../api/_lib/handlers';
 import { memoryStore, type Store } from '../api/_lib/store';
 import { issueToken, verifyToken } from '../api/_lib/auth';
-import { explainMetaError, whatsappHandler } from '../api/_lib/whatsapp';
 
 type Result = { status: number; body: any };
 
@@ -124,64 +123,5 @@ describe('api', () => {
     delete process.env.MONGODB_URI;
     expect((await call(data, { token: 'x' })).status).toBe(503);
     expect((await call(login, { method: 'POST', body: { password: 'secret-pass' } })).status).toBe(503);
-  });
-});
-
-describe('whatsapp automatic sending', () => {
-  const body = { to: '919876543210', lang: 'en', params: { customer: 'Ghosh\nTransport', station: 'Demo Fuel', balance: '11,451.00', upi: '', contact: '98300 12345' } };
-  let calls: { url: string; init: any }[];
-  const fakeFetch = (reply: { status: number; json: unknown }) =>
-    (async (url: string, init: any) => {
-      calls.push({ url, init });
-      return { ok: reply.status < 300, status: reply.status, json: async () => reply.json } as Response;
-    }) as unknown as typeof fetch;
-
-  beforeEach(() => {
-    calls = [];
-    process.env.MONGODB_URI = 'mongodb://example/fuel';
-    process.env.APP_PASSWORD = 'secret-pass';
-    process.env.WHATSAPP_TOKEN = 'EAAG-test';
-    process.env.WHATSAPP_PHONE_NUMBER_ID = '1234567890';
-    delete process.env.WHATSAPP_TEMPLATE;
-  });
-
-  it('health says whether automatic sending is set up (without secrets)', async () => {
-    const r = await call(health);
-    expect(r.body.whatsapp).toBe(true);
-    expect(JSON.stringify(r.body)).not.toContain('EAAG');
-    delete process.env.WHATSAPP_TOKEN;
-    expect((await call(health)).body.whatsapp).toBe(false);
-  });
-
-  it('sends the approved template with 5 cleaned variables', async () => {
-    const h = whatsappHandler(fakeFetch({ status: 200, json: { messages: [{ id: 'wamid.1' }] } }));
-    const { token } = issueToken();
-    const r = await call(h, { method: 'POST', token, body });
-    expect(r.body).toEqual({ ok: true, id: 'wamid.1' });
-    expect(calls[0].url).toBe('https://graph.facebook.com/v21.0/1234567890/messages');
-    expect(calls[0].init.headers.Authorization).toBe('Bearer EAAG-test');
-    const sent = JSON.parse(calls[0].init.body);
-    expect(sent.template.name).toBe('due_reminder');
-    expect(sent.template.language.code).toBe('en');
-    expect(sent.template.components[0].parameters.map((p: any) => p.text)).toEqual(['Ghosh Transport', 'Demo Fuel', '11,451.00', '-', '98300 12345']);
-  });
-
-  it('needs login, a valid number, and the keys', async () => {
-    const h = whatsappHandler(fakeFetch({ status: 200, json: {} }));
-    expect((await call(h, { method: 'POST', body })).status).toBe(401);
-    const { token } = issueToken();
-    expect((await call(h, { method: 'POST', token, body: { ...body, to: '12ab' } })).status).toBe(400);
-    delete process.env.WHATSAPP_PHONE_NUMBER_ID;
-    expect((await call(h, { method: 'POST', token, body })).status).toBe(501);
-    expect(calls).toHaveLength(0);
-  });
-
-  it('explains Meta errors in plain words', async () => {
-    const h = whatsappHandler(fakeFetch({ status: 400, json: { error: { code: 132001, message: 'Template name does not exist' } } }));
-    const { token } = issueToken();
-    const r = await call(h, { method: 'POST', token, body });
-    expect(r.status).toBe(502);
-    expect(r.body.error).toContain('template');
-    expect(explainMetaError({ code: 190 })).toContain('WHATSAPP_TOKEN');
   });
 });
