@@ -15,6 +15,7 @@ import {
 import { sampleData, emptyData } from '../src/lib/seed';
 import { parseAmountExpr, splitAmounts } from '../src/lib/util';
 import { computeLpgDay, createLpgDay, lpgOpeningStock, sampleLpg } from '../src/lib/lpg';
+import { buildDueMessage, normalizePhone, waLink } from '../src/lib/whatsapp';
 import { computeWineDay, createWineDay, productUsed, sampleWine, wineCategoryOptions, wineOpeningStock } from '../src/lib/wine';
 
 describe('notebook page 19/06/2026', () => {
@@ -479,5 +480,37 @@ describe('wine counter sales (Sell screen)', () => {
     const { data, day, w750 } = setup();
     day.sales!.push({ id: 's4', time: '20:00', mode: 'cash', customer: '', lines: [{ productId: w750.id, qty: 100, mrpPaise: 82000 }] });
     expect(computeWineDay(data, day).rows.find((x) => x.product.id === w750.id)!.error).toBe(true);
+  });
+});
+
+describe('WhatsApp due reminders', () => {
+  it('normalises Indian and international numbers', () => {
+    expect(normalizePhone('98765 43210')).toBe('919876543210');
+    expect(normalizePhone('098765-43210')).toBe('919876543210');
+    expect(normalizePhone('+91 98765 43210')).toBe('919876543210');
+    expect(normalizePhone('919876543210')).toBe('919876543210');
+    expect(normalizePhone('+44 7700 900123')).toBe('447700900123');
+    expect(normalizePhone('12345')).toBeNull();
+    expect(normalizePhone('033 2222 3333')).toBeNull(); // landline – no WhatsApp
+    expect(normalizePhone('')).toBeNull();
+  });
+
+  it('builds a message with balance, recent credit, payment and UPI', () => {
+    const data = sampleData();
+    data.settings.reminders = { stationPhone: '98300 00000', upiId: 'demofuel@okaxis', lang: 'en' };
+    const c = data.customers[0];
+    data.receipts.push({ id: 'r', customerId: c.id, date: '2026-06-25', amountPaise: 145100, mode: 'cash', note: '' });
+    const msg = buildDueMessage(data, c);
+    expect(msg).toContain('Namaskar Ghosh Transport');
+    expect(msg).toContain('₹10,000.00'); // 11,451 − 1,451
+    expect(msg).toContain('₹11,451.00 (Machine 285)');
+    expect(msg).toContain('Last payment: ₹1,451.00');
+    expect(msg).toContain('demofuel@okaxis');
+    expect(msg).toContain('Contact: 98300 00000');
+    expect(buildDueMessage(data, c, 'bn')).toContain('মোট বাকি');
+  });
+
+  it('makes a click-to-chat link with the text encoded', () => {
+    expect(waLink('919876543210', 'Hi ₹10 & thanks')).toBe('https://wa.me/919876543210?text=Hi%20%E2%82%B910%20%26%20thanks');
   });
 });

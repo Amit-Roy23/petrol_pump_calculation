@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { BookOpen, HandCoins, Phone, Plus, Search, Trash2, UserPlus } from 'lucide-react';
+import { BookOpen, HandCoins, MessageCircle, Phone, Plus, Search, Trash2, UserPlus } from 'lucide-react';
+import { WA_GREEN, WhatsAppReminder, remindedAgo } from '../components/WhatsAppReminder';
 import { useStore } from '../lib/store';
 import { customerBalances, customerLedger } from '../lib/compute';
 import type { Customer } from '../lib/types';
@@ -13,6 +14,11 @@ export default function Dues() {
   const [paying, setPaying] = useState<Customer | null>(null);
   const [viewing, setViewing] = useState<Customer | null>(null);
   const balances = useMemo(() => customerBalances(data), [data]);
+  const [reminding, setReminding] = useState<string[] | null>(null);
+  // Customers who owe money, largest balance first.
+  const owing = data.customers
+    .filter((c) => (balances.get(c.id)?.balancePaise ?? 0) > 0)
+    .sort((x, y) => (balances.get(y.id)?.balancePaise ?? 0) - (balances.get(x.id)?.balancePaise ?? 0));
   const lang = data.settings.language;
 
   const list = data.customers
@@ -29,9 +35,16 @@ export default function Dues() {
           <h1 className="font-display text-2xl font-extrabold tracking-tight sm:text-3xl">{t('navDues')}</h1>
           <p className="text-sm text-ink-2">{t('duesTitle')}</p>
         </div>
-        <button className="btn-primary" onClick={() => setEditing({ id: '', name: '', phone: '', vehicle: '', openingDuePaise: 0 })}>
-          <UserPlus className="h-4 w-4" /> {t('addCustomer')}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          {owing.length > 0 && (
+            <button className={cn('btn', WA_GREEN)} onClick={() => setReminding(owing.map((c) => c.id))}>
+              <MessageCircle className="h-4 w-4" /> {t('remindAll')} ({owing.length})
+            </button>
+          )}
+          <button className="btn-primary" onClick={() => setEditing({ id: '', name: '', phone: '', vehicle: '', openingDuePaise: 0 })}>
+            <UserPlus className="h-4 w-4" /> {t('addCustomer')}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4">
@@ -69,6 +82,7 @@ export default function Dues() {
                       {c.vehicle && <span>{c.vehicle}</span>}
                       {b.lastDate && <span>{dateLabel(b.lastDate, lang, 'short')}</span>}
                     </div>
+                    {remindedAgo(c.lastReminderAt, lang) && <div className="mt-0.5 text-[11px] font-semibold text-ok">✓ {remindedAgo(c.lastReminderAt, lang)}</div>}
                   </button>
                   <div className="text-right">
                     <div className="label mb-0">{t('balance')}</div>
@@ -80,6 +94,12 @@ export default function Dues() {
                     {t('given')} {rupee(b.salesPaise + c.openingDuePaise)} · {t('received')} {rupee(b.receivedPaise)}
                   </div>
                   <div className="flex gap-1">
+                    {b.balancePaise > 0 && (
+                      <button className={cn('btn px-3 py-2', WA_GREEN)} onClick={() => setReminding([c.id])} aria-label={`${t('waReminder')} ${c.name}`} title={t('waReminder')}>
+                        <MessageCircle className="h-4 w-4" />
+                        <span className="hidden sm:inline">{t('waShort')}</span>
+                      </button>
+                    )}
                     <button className="btn-quiet" onClick={() => setViewing(c)} aria-label={t('ledger')}>
                       <BookOpen className="h-4 w-4" />
                     </button>
@@ -122,6 +142,8 @@ export default function Dues() {
       {paying && <ReceiptModal customer={paying} balance={balances.get(paying.id)?.balancePaise ?? 0} onClose={() => setPaying(null)} />}
 
       {viewing && <LedgerModal customer={viewing} onClose={() => setViewing(null)} />}
+
+      {reminding && <WhatsAppReminder customerIds={reminding} onClose={() => setReminding(null)} />}
     </div>
   );
 }
