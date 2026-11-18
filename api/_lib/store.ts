@@ -46,6 +46,8 @@ export interface PunchRecord {
   inside: boolean | null;
   photoId: string;
   device: string;
+  /** Which part of the business: petrol / lpg / wine (absent on early punches = petrol). */
+  business?: string;
 }
 
 export interface PunchFilter {

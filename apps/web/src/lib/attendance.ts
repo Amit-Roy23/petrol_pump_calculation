@@ -15,6 +15,8 @@ export interface Punch {
   inside: boolean | null;
   photoId: string;
   device: string;
+  /** petrol / lpg / wine (absent on early punches = petrol). */
+  business?: 'petrol' | 'lpg' | 'wine';
 }
 
 export interface Geofence {
@@ -24,7 +26,8 @@ export interface Geofence {
 }
 
 export interface StaffStatus {
-  staff: { id: string; name: string };
+  staff: { id: string; name: string; businesses: ('petrol' | 'lpg' | 'wine')[] };
+  businessNames: Record<string, string>;
   stationName: string;
   last: Punch | null;
   recent: Punch[];
@@ -85,9 +88,9 @@ async function call<T>(action: string, opts: { token?: string | null; method?: s
 }
 
 export const attendanceApi = {
-  staffLogin: (phone: string, pin: string) => call<{ token: string; staff: { id: string; name: string } }>('staff-login', { method: 'POST', body: { phone, pin } }),
+  staffLogin: (phone: string, pin: string) => call<{ token: string; staff: { id: string; name: string; businesses: string[] } }>('staff-login', { method: 'POST', body: { phone, pin } }),
   status: (token: string) => call<StaffStatus>('status', { token }),
-  punch: (token: string, body: { type: 'in' | 'out'; photo: string; lat: number; lng: number; accuracy: number }) =>
+  punch: (token: string, body: { type: 'in' | 'out'; photo: string; lat: number; lng: number; accuracy: number; business: 'petrol' | 'lpg' | 'wine' }) =>
     call<{ ok: true; punch: Punch }>('punch', { token, method: 'POST', body: { ...body, clientAt: new Date().toString(), device: navigator.userAgent } }),
   // Owner
   list: (from: string, to: string) => call<{ punches: Punch[]; openShiftHours: number }>('list', { token: tokenStore.get(), query: { from, to } }),

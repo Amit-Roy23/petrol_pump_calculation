@@ -29,7 +29,8 @@ function errorText(e: unknown, t: (k: never) => string): string {
   return tt('cantReach');
 }
 
-function StaffLogin({ onDone }: { onDone: () => void }) {
+/** Staff login form – used on the punch page and the main login page's Staff tab. */
+export function StaffLogin({ onDone, bare }: { onDone: () => void; bare?: boolean }) {
   const { t } = useStore();
   const [phone, setPhone] = useState('');
   const [pin, setPin] = useState('');
@@ -50,14 +51,18 @@ function StaffLogin({ onDone }: { onDone: () => void }) {
     }
   };
   return (
-    <form onSubmit={submit} className="card rise overflow-hidden">
-      <div className="p-6 sm:p-8">
-        <BrandMark className="h-12 w-12" />
-        <h1 className="mt-5 font-display text-2xl font-extrabold tracking-tight">{t('punchTitle')}</h1>
-        <p className="mt-1.5 text-sm text-ink-2">{t('punchLoginHint')}</p>
-        <label className="mt-6 block">
+    <form onSubmit={submit} className={bare ? '' : 'card rise overflow-hidden'}>
+      <div className={bare ? '' : 'p-6 sm:p-8'}>
+        {!bare && (
+          <>
+            <BrandMark className="h-12 w-12" />
+            <h1 className="mt-5 font-display text-2xl font-extrabold tracking-tight">{t('punchTitle')}</h1>
+          </>
+        )}
+        <p className={cn('text-sm text-ink-2', !bare && 'mt-1.5')}>{t('punchLoginHint')}</p>
+        <label className="mt-5 block">
           <span className="label">{t('customerPhoneLabel')}</span>
-          <input className="input num text-lg" inputMode="tel" autoComplete="tel" placeholder="98765 43210" value={phone} onChange={(e) => setPhone(e.target.value)} autoFocus />
+          <input className="input num text-lg" inputMode="tel" autoComplete="tel" placeholder="98765 43210" value={phone} onChange={(e) => setPhone(e.target.value)} autoFocus={!bare} />
         </label>
         <label className="mt-3 block">
           <span className="label">{t('pin')}</span>
@@ -102,6 +107,13 @@ function PunchScreen({ token, onLogout }: { token: string; onLogout: () => void 
   const [error, setError] = useState('');
   const [done, setDone] = useState<Punch | null>(null);
   const [, tick] = useState(0);
+  const [business, setBusiness] = useState<'petrol' | 'lpg' | 'wine' | null>(() => {
+    try {
+      return (localStorage.getItem('fuel-ledger:staff-business') as 'petrol' | 'lpg' | 'wine' | null) ?? null;
+    } catch {
+      return null;
+    }
+  });
 
   const load = useCallback(async () => {
     setLoadError('');
@@ -166,6 +178,10 @@ function PunchScreen({ token, onLogout }: { token: string; onLogout: () => void 
   const last = status.last;
   const openIn = last && last.type === 'in' && Date.now() - new Date(last.at).getTime() < status.openShiftHours * 3600_000 ? last : null;
   const nextType: 'in' | 'out' = openIn ? 'out' : 'in';
+  const parts = status.staff.businesses?.length ? status.staff.businesses : (['petrol'] as const);
+  // Punching out goes to the same part as the punch in; otherwise the chosen / first part.
+  const part: 'petrol' | 'lpg' | 'wine' = openIn ? openIn.business ?? 'petrol' : business && (parts as string[]).includes(business) ? business : parts[0];
+  const partName = (b: string) => status.businessNames?.[b] || t(b === 'lpg' ? 'bizLpg' : b === 'wine' ? 'bizWine' : 'bizPetrol');
   const fence = status.geofence;
   const dist = fence && geo ? distanceM(fence, geo) : null;
   const inside = fence && dist !== null ? dist <= fence.radiusM : null;
@@ -177,7 +193,7 @@ function PunchScreen({ token, onLogout }: { token: string; onLogout: () => void 
     setBusy(true);
     setError('');
     try {
-      const r = await attendanceApi.punch(token, { type: nextType, photo, lat: geo.lat, lng: geo.lng, accuracy: geo.accuracy });
+      const r = await attendanceApi.punch(token, { type: nextType, photo, lat: geo.lat, lng: geo.lng, accuracy: geo.accuracy, business: part });
       setDone(r.punch);
       setPhoto(null);
       await load();
@@ -198,7 +214,7 @@ function PunchScreen({ token, onLogout }: { token: string; onLogout: () => void 
           <BrandMark className="h-10 w-10 shrink-0" />
           <div className="min-w-0">
             <div className="truncate font-display text-lg font-extrabold leading-tight">{status.staff.name}</div>
-            <div className="truncate text-xs text-ink-3">{status.stationName || t('punchTitle')}</div>
+            <div className="truncate text-xs text-ink-3">{partName(part)}</div>
           </div>
         </div>
         <button className="btn-quiet shrink-0 px-2 text-xs" onClick={onLogout}>
@@ -216,6 +232,35 @@ function PunchScreen({ token, onLogout }: { token: string; onLogout: () => void 
               {time(done.at)} · {day(done.at)}
               {done.distanceM !== null && ` · ${done.inside ? t('atPump') : `${t('outsidePump')} ${fmtDistance(done.distanceM)}`}`}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Which part they're working in today (only if more than one) */}
+      {parts.length > 1 && (
+        <div className="card p-3">
+          <div className="label">{t('workingAt')}</div>
+          <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${parts.length}, minmax(0, 1fr))` }}>
+            {parts.map((b) => (
+              <button
+                key={b}
+                disabled={!!openIn}
+                onClick={() => {
+                  setBusiness(b);
+                  try {
+                    localStorage.setItem('fuel-ledger:staff-business', b);
+                  } catch {
+                    /* ignore */
+                  }
+                }}
+                className={cn(
+                  'truncate rounded-xl border px-2 py-2.5 text-sm font-bold transition disabled:cursor-not-allowed',
+                  part === b ? (b === 'petrol' ? 'border-brand bg-brand text-brand-ink' : b === 'lpg' ? 'border-cng bg-cng text-white' : 'border-premium bg-premium text-white') : 'border-line text-ink-2 disabled:opacity-40'
+                )}
+              >
+                {partName(b)}
+              </button>
+            ))}
           </div>
         </div>
       )}

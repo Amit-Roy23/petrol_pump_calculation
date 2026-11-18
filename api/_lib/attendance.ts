@@ -10,6 +10,22 @@ interface StaffRow {
   phone: string;
   active: boolean;
   pinHash?: string;
+  businesses?: string[];
+}
+
+export const BUSINESSES = ['petrol', 'lpg', 'wine'] as const;
+
+/** Parts a staff member works in (older records = petrol only). */
+export function staffBusinesses(s: StaffRow): string[] {
+  const b = (s.businesses ?? []).filter((x) => (BUSINESSES as readonly string[]).includes(x));
+  return b.length ? b : ['petrol'];
+}
+
+/** Display names of the three parts, from shared settings. */
+function businessNames(settings: Json | null): Record<string, string> {
+  const lpg = settings?.lpg as { businessName?: string } | undefined;
+  const wine = settings?.wine as { shopName?: string } | undefined;
+  return { petrol: String(settings?.stationName ?? 'Petrol pump'), lpg: lpg?.businessName || 'LPG', wine: wine?.shopName || 'Wine shop' };
 }
 interface Geofence {
   lat: number;
@@ -75,7 +91,7 @@ export function attendanceHandler(getStore: () => Store, now: () => Date = () =>
           await new Promise((r) => setTimeout(r, 700)); // slow down guessing
           return fail(res, 401, 'Wrong mobile number or PIN');
         }
-        return send(res, 200, { ...issueStaffToken(staff.id, staff.pinHash!), staff: { id: staff.id, name: staff.name } });
+        return send(res, 200, { ...issueStaffToken(staff.id, staff.pinHash!), staff: { id: staff.id, name: staff.name, businesses: staffBusinesses(staff) } });
       }
 
       const token = readToken(bearer(req));
@@ -92,12 +108,15 @@ export function attendanceHandler(getStore: () => Store, now: () => Date = () =>
 
         if (action === 'status') {
           const recent = await store.punches({ staffId: staff.id, limit: 20 });
-          return send(res, 200, { staff: { id: staff.id, name: staff.name }, stationName: String(settings?.stationName ?? ''), last: recent[0] ?? null, recent, geofence: fence, serverTime: now().toISOString(), openShiftHours: OPEN_SHIFT_HOURS });
+          return send(res, 200, { staff: { id: staff.id, name: staff.name, businesses: staffBusinesses(staff) }, businessNames: businessNames(settings), stationName: String(settings?.stationName ?? ''), last: recent[0] ?? null, recent, geofence: fence, serverTime: now().toISOString(), openShiftHours: OPEN_SHIFT_HOURS });
         }
 
         // punch
         if (req.method !== 'POST') return fail(res, 405, 'Method not allowed');
-        const b = ((await readJson(req)) ?? {}) as Partial<{ type: string; photo: string; lat: number; lng: number; accuracy: number; clientAt: string; device: string }>;
+        const b = ((await readJson(req)) ?? {}) as Partial<{ type: string; photo: string; lat: number; lng: number; accuracy: number; clientAt: string; device: string; business: string }>;
+        const allowed = staffBusinesses(staff);
+        const business = b.business ?? allowed[0];
+        if (!allowed.includes(business)) return fail(res, 403, 'You are not set up to work in this business');
         if (b.type !== 'in' && b.type !== 'out') return fail(res, 400, 'Invalid punch type');
         if (typeof b.photo !== 'string' || !/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(b.photo) || b.photo.length > MAX_PHOTO) return fail(res, 400, 'A photo is required');
         if (typeof b.lat !== 'number' || typeof b.lng !== 'number' || Math.abs(b.lat) > 90 || Math.abs(b.lng) > 180 || (b.lat === 0 && b.lng === 0)) return fail(res, 400, 'Location is required');
@@ -123,6 +142,7 @@ export function attendanceHandler(getStore: () => Store, now: () => Date = () =>
           inside: fence && dist !== null ? dist <= fence.radiusM : null,
           photoId: randomUUID(),
           device: String(b.device ?? req.headers['user-agent'] ?? '').slice(0, 120),
+          business,
         };
         await store.addPunch(rec, b.photo);
         return send(res, 200, { ok: true, punch: rec });

@@ -2,12 +2,14 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CalendarDays, Download, KeyRound, Phone, UserPlus, UserRound, Users } from 'lucide-react';
 import { hashPin } from '../lib/attendance';
-import { PunchRegister } from '../components/PunchRegister';
+import { StaffModal, blankStaff } from '../components/StaffEditor';
+import { staffFor } from '../lib/staff';
 import { useStore } from '../lib/store';
 import { computeDay, shiftRecords, staffList, type ShiftRecord } from '../lib/compute';
 import type { Staff as StaffT } from '../lib/types';
 import { cn, dateLabel, downloadFile, litresFmt, rupee, todayISO, uid } from '../lib/util';
 import { Card, DiffBadge, Empty, Field, Modal, SectionTitle } from '../components/ui';
+import { Fingerprint } from 'lucide-react';
 
 interface Row {
   key: string;
@@ -43,7 +45,8 @@ export default function Staff() {
       if (!map.has(key)) map.set(key, { key, name, staff: st, records: [], byDay: new Map(), litres: 0, diff: 0 });
       return map.get(key)!;
     };
-    for (const st of staff) if (st.active) ensure(st.id, st.name, st);
+    // Petrol staff always get a row; anyone else only if they worked a petrol shift.
+    for (const st of staffFor(data, 'petrol')) ensure(st.id, st.name, st);
     for (const r of records) {
       const st = staff.find((x) => x.id === r.staffKey);
       const row = ensure(r.staffKey, st?.name ?? r.staffName, st);
@@ -87,9 +90,14 @@ export default function Staff() {
           <h1 className="font-display text-2xl font-extrabold tracking-tight sm:text-3xl">{t('staffTitle')}</h1>
           <p className="text-sm text-ink-2">{t('staffHint')}</p>
         </div>
-        <button className="btn-primary" onClick={() => setEditing({ id: '', name: '', phone: '', active: true })}>
-          <UserPlus className="h-4 w-4" /> {t('addWorker')}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <Link to="/team" className="btn-ghost">
+            <Fingerprint className="h-4 w-4" /> {t('teamTitle')}
+          </Link>
+          <button className="btn-primary" onClick={() => setEditing(blankStaff('petrol'))}>
+            <UserPlus className="h-4 w-4" /> {t('addWorker')}
+          </button>
+        </div>
       </div>
 
       {/* On duty for the selected day */}
@@ -121,8 +129,6 @@ export default function Staff() {
           <p className="text-sm text-ink-3">{t('noData')}</p>
         )}
       </Card>
-
-      <PunchRegister />
 
       {/* Monthly attendance */}
       <Card className="overflow-hidden">
@@ -244,95 +250,7 @@ export default function Staff() {
         </Modal>
       )}
 
-      {editing && (
-        <WorkerModal
-          worker={editing}
-          onClose={() => setEditing(null)}
-          onSave={async (w, pin) => {
-            const name = w.name.trim();
-            if (staff.some((x) => x.id !== w.id && x.name.trim().toLowerCase() === name.toLowerCase())) {
-              toast(`${name} – already in the list`, 'warn');
-              return;
-            }
-            const phone10 = w.phone.replace(/\D/g, '').slice(-10);
-            if ((pin || w.pinHash) && phone10.length !== 10) {
-              toast(t('phoneNeededForPin'), 'warn');
-              return;
-            }
-            if (phone10.length === 10 && staff.some((x) => x.id !== w.id && x.phone.replace(/\D/g, '').slice(-10) === phone10)) {
-              toast(t('duplicatePhone'), 'warn');
-              return;
-            }
-            const id = w.id || uid();
-            const pinHash = pin ? await hashPin(id, pin) : w.pinHash;
-            update((d) => {
-              const list = staffList(d.settings).map((x) => ({ ...x }));
-              const rec = { ...w, id, name, pinHash };
-              const i = list.findIndex((x) => x.id === id);
-              if (i >= 0) list[i] = rec;
-              else list.push(rec);
-              d.settings.staff = list;
-            });
-            toast(t('saved'));
-            setEditing(null);
-          }}
-        />
-      )}
+      {editing && <StaffModal staff={editing} onClose={() => setEditing(null)} />}
     </div>
   );
 }
-
-function WorkerModal({ worker, onClose, onSave }: { worker: StaffT; onClose: () => void; onSave: (w: StaffT, pin: string) => void }) {
-  const { t } = useStore();
-  const [w, setW] = useState(worker);
-  const [pin, setPin] = useState('');
-  const pinOk = pin === '' || /^\d{4,6}$/.test(pin);
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={worker.id ? worker.name : t('addWorker')}
-      footer={
-        <>
-          <button className="btn-ghost" onClick={onClose}>
-            {t('cancel')}
-          </button>
-          <button className="btn-primary" disabled={!w.name.trim() || !pinOk} onClick={() => onSave(w, pin)}>
-            {t('save')}
-          </button>
-        </>
-      }
-    >
-      <div className="space-y-3">
-        <Field label={t('worker')}>
-          <input className="input" autoFocus value={w.name} onChange={(e) => setW({ ...w, name: e.target.value })} />
-        </Field>
-        <Field label={t('phone')}>
-          <div className="relative">
-            <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" />
-            <input className="input pl-9" inputMode="tel" value={w.phone} onChange={(e) => setW({ ...w, phone: e.target.value })} />
-          </div>
-        </Field>
-        <Field label={t('pinLabel')} hint={w.pinHash ? t('pinIsSet') : t('pinHintNew')}>
-          <div className="relative">
-            <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" />
-            <input
-              className={cn('input num pl-9 tracking-[0.3em]', !pinOk && 'border-bad')}
-              inputMode="numeric"
-              autoComplete="new-password"
-              maxLength={6}
-              placeholder={w.pinHash ? '••••' : ''}
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-            />
-          </div>
-        </Field>
-        <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
-          <input type="checkbox" className="h-4 w-4 accent-[rgb(var(--brand))]" checked={w.active} onChange={(e) => setW({ ...w, active: e.target.checked })} />
-          {t('active')}
-        </label>
-      </div>
-    </Modal>
-  );
-}
-
