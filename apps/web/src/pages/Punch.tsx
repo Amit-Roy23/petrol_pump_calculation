@@ -68,7 +68,7 @@ function StaffApp({ token, name, onLogout }: { token: string; name: string; onLo
 
   return (
     <div className="paper flex min-h-screen justify-center px-4 pb-28 pt-6 sm:pt-10">
-      <div className={cn('w-full', current === 'shift' ? 'max-w-2xl' : 'max-w-md')}>
+      <div className={cn('w-full', current === 'shift' ? 'max-w-2xl lg:max-w-7xl' : 'max-w-md')}>
         {current === 'punch' ? (
           <PunchScreen token={token} onLogout={onLogout} />
         ) : (

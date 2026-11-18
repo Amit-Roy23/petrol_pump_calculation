@@ -418,26 +418,67 @@ function ShiftEditor({
   const time = (iso: string) => new Date(iso).toLocaleTimeString(lang === 'bn' ? 'bn-IN' : 'en-IN', { hour: '2-digit', minute: '2-digit' });
   const missing = sc.rows.filter((r) => r.status !== 'ok').length;
 
+  const diffTone = sc.diffPaise === 0 ? 'text-ok' : Math.abs(sc.diffPaise) <= tol ? 'text-warn' : 'text-bad';
+  const hasMoney = sc.salePaise > 0 || sc.collectedPaise > 0;
+  const actions = (className: string) =>
+    !locked && (
+      <div className={className}>
+        <div className="flex gap-2">
+          <button className="btn-ghost shrink-0 px-4" onClick={onSave} disabled={save.kind === 'saving'}>
+            {save.kind === 'saving' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} {t('save')}
+          </button>
+          <button className="btn-primary flex-1 py-2.5" onClick={onSubmit} disabled={save.kind === 'saving' || missing > 0 || sc.hasError}>
+            <Send className="h-4 w-4" /> {t('submitShift')}
+          </button>
+        </div>
+        {(missing > 0 || sc.hasError) && <p className="mt-1 text-center text-[11px] text-ink-3">{sc.hasError ? t('fixReadingsFirst') : `${t('enterAllClosings')} (${missing})`}</p>}
+      </div>
+    );
+
   return (
     <>
-      {/* Header */}
-      <div className="card flex items-center gap-3 p-3">
-        {onBack && (
-          <button className="btn-quiet px-2" onClick={onBack} aria-label={t('back')}>
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-2">
-            <span className="font-display text-2xl font-extrabold">{machine.name}</span>
-            <span className="truncate text-sm font-semibold text-ink-2">{sc.label}</span>
+      {/* Header + live totals (pinned on bigger screens) */}
+      <div className="card z-20 p-3 lg:sticky lg:top-3 lg:shadow-lift">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            {onBack && (
+              <button className="btn-quiet px-2" onClick={onBack} aria-label={t('back')}>
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+            )}
+            <div className="min-w-0">
+              <div className="flex items-baseline gap-2">
+                <span className="font-display text-2xl font-extrabold">{machine.name}</span>
+                <span className="truncate text-sm font-semibold text-ink-2">{sc.label}</span>
+              </div>
+              <div className="num text-xs text-ink-3">
+                {dateLabel(day.date, lang, 'short')}
+                {shift.start && ` · ${shift.start}–${shift.end}`}
+              </div>
+            </div>
+            <div className="ml-auto lg:hidden">
+              <SaveBadge save={save} locked={locked} submittedAt={shift.submittedAt} time={time} />
+            </div>
           </div>
-          <div className="num text-xs text-ink-3">
-            {dateLabel(day.date, lang, 'short')}
-            {shift.start && ` · ${shift.start}–${shift.end}`}
+
+          <div className="grid w-full grid-cols-3 divide-x divide-line rounded-xl border border-line bg-sunk/60 lg:w-auto">
+            {[
+              [t('sale'), rupee(sc.salePaise), ''],
+              [t('collected'), rupee(sc.collectedPaise), ''],
+              [t('kpiDiff'), hasMoney ? (sc.diffPaise === 0 ? '✓ ' + rupee(0) : rupee(sc.diffPaise, { sign: true })) : '—', hasMoney ? diffTone : 'text-ink-3'],
+            ].map(([label, value, tone]) => (
+              <div key={label} className="min-w-0 px-3 py-1.5 lg:min-w-[128px]">
+                <div className="truncate text-[10px] font-semibold uppercase tracking-wider text-ink-3">{label}</div>
+                <div className={cn('num truncate text-sm font-bold sm:text-base', tone)}>{value}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden items-center gap-3 lg:flex">
+            <SaveBadge save={save} locked={locked} submittedAt={shift.submittedAt} time={time} />
+            {actions('w-[300px]')}
           </div>
         </div>
-        <SaveBadge save={save} locked={locked} submittedAt={shift.submittedAt} time={time} />
       </div>
 
       {save.kind === 'error' && !locked && (
@@ -457,121 +498,126 @@ function ShiftEditor({
         </p>
       )}
 
-      {/* Readings */}
-      <div className="card paper overflow-hidden">
-        <div className="border-b border-line bg-surface px-4 py-3 font-display font-bold">{t('readingsTitle')}</div>
-        <div className="divide-y divide-line bg-surface/80">
-          {sc.rows.map((row) => (
-            <NozzleRowView key={row.nozzle.id} row={row} locked={locked} lockOpening={!!row.reading.opening.trim()} onChange={onReading} />
-          ))}
-        </div>
-        <div className="space-y-2 border-t border-line bg-sunk/70 px-4 py-4">
-          {sc.products.map((pl) => (
-            <div key={pl.product.id} className={cn('flex flex-wrap items-center justify-between gap-2 rounded-xl border-l-4 bg-surface px-3 py-2.5', toneClass[pl.product.tone].bar)}>
-              <ProductTag product={pl.product} />
-              <div className="num flex flex-wrap items-center gap-x-2 text-sm">
-                <span className="font-bold">{litresFmt(pl.litresCenti)} L</span>
-                <span className="text-ink-3">×</span>
-                <span>{rupee(pl.ratePaise, { symbol: false })}</span>
-                <span className="text-ink-3">=</span>
-                <span className="text-base font-bold">{rupee(pl.amountPaise)}</span>
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+        {/* Left: meter readings + breakdown */}
+        <div className="space-y-4">
+          <div className="card paper overflow-hidden">
+            <div className="border-b border-line bg-surface px-4 py-3 font-display font-bold">
+              {t('readingsTitle')} · <span className="text-brand">{machine.name}</span>
+            </div>
+            <div className="hidden grid-cols-[64px_1fr_1fr_52px_84px] gap-2 border-b border-line bg-sunk px-5 py-2 text-[11px] font-semibold uppercase tracking-wider text-ink-3 md:grid">
+              <span>{t('nozzle')}</span>
+              <span>{t('opening')}</span>
+              <span>{t('closing')}</span>
+              <span>{t('testing')}</span>
+              <span className="text-right">{t('litres')}</span>
+            </div>
+            <div className="divide-y divide-line bg-surface/80">
+              {sc.rows.map((row) => (
+                <NozzleRowView key={row.nozzle.id} row={row} locked={locked} lockOpening={!!row.reading.opening.trim()} compact onChange={onReading} />
+              ))}
+            </div>
+            <div className="space-y-2 border-t border-line bg-sunk/70 px-4 py-3">
+              {sc.products.map((pl) => (
+                <div key={pl.product.id} className={cn('flex flex-wrap items-center justify-between gap-2 rounded-xl border-l-4 bg-surface px-3 py-2', toneClass[pl.product.tone].bar)}>
+                  <ProductTag product={pl.product} />
+                  <div className="num flex flex-wrap items-center gap-x-2 text-sm">
+                    <span className="font-bold">{litresFmt(pl.litresCenti)} L</span>
+                    <span className="text-ink-3">×</span>
+                    <span>{rupee(pl.ratePaise, { symbol: false })}</span>
+                    <span className="text-ink-3">=</span>
+                    <span className="text-base font-bold">{rupee(pl.amountPaise)}</span>
+                  </div>
+                </div>
+              ))}
+              <div className="flex items-center justify-between gap-3 pt-1">
+                <span className="font-display text-sm font-bold uppercase tracking-wider text-ink-2">{t('shiftTotal')}</span>
+                <Lcd value={rupee(sc.salePaise)} size="md" ghost={sc.salePaise === 0} />
               </div>
             </div>
-          ))}
-          <div className="flex items-center justify-between gap-3 pt-2">
-            <span className="font-display text-sm font-bold uppercase tracking-wider text-ink-2">{t('shiftTotal')}</span>
-            <Lcd value={rupee(sc.salePaise)} size="md" ghost={sc.salePaise === 0} />
           </div>
-        </div>
-      </div>
 
-      {/* Money */}
-      <div className="card p-4">
-        <div className="mb-3 font-display font-bold">{t('collectionsTitle')}</div>
-        <div className="mb-5">
-          <span className="label flex items-center gap-1.5">
-            <Banknote className="h-3.5 w-3.5" /> {t('cash')}
-          </span>
-          <MoneyInput key={shift.id} value={shift.cashPaise} disabled={locked} onCommit={(v) => edit((s) => (s.cashPaise = v))} className="[&_input]:py-3 [&_input]:text-lg [&_input]:font-bold" ariaLabel={t('cash')} />
-          <span className="mt-1 block text-[11px] text-ink-3">{t('cashHint')}</span>
-        </div>
-        <div className="space-y-3">
-          <QuickAmountList key={`on-${shift.id}`} title={t('online')} icon={<Smartphone className="h-4 w-4" />} accent="bg-cng" entries={shift.online} disabled={locked} onChange={(next) => edit((s) => (s.online = next))} />
-          <QuickAmountList key={`card-${shift.id}`} title={t('card')} icon={<CreditCard className="h-4 w-4" />} accent="bg-premium" entries={shift.card} disabled={locked} onChange={(next) => edit((s) => (s.card = next))} />
-          {methods.map((m, i) => (
-            <QuickAmountList
-              key={`${m.id}-${shift.id}`}
-              title={methodName(m)}
-              icon={<QrCode className="h-4 w-4" />}
-              accent={METHOD_ACCENTS[i % METHOD_ACCENTS.length]}
-              entries={shift.extra?.[m.id] ?? []}
-              disabled={locked}
-              onChange={(next: Entry[]) => edit((s) => (s.extra = { ...(s.extra ?? {}), [m.id]: next }))}
-            />
-          ))}
-          <DueEditor key={`due-${shift.id}`} dues={shift.dues} locked={locked} customers={customers} onNewCustomer={onNewCustomer} onChange={(next) => edit((s) => (s.dues = next))} />
-          <div className="rounded-xl border border-line bg-sunk/60 p-3">
-            <div className="mb-1 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm font-bold">
-                <span className="grid h-7 w-7 place-items-center rounded-lg bg-bad text-white">
-                  <Receipt className="h-4 w-4" />
-                </span>
-                {t('shiftExpenses')}
+          {/* Short / excess breakdown */}
+          <div className="card overflow-hidden">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 px-4 py-4 text-sm">
+              {[
+                [t('cash'), sc.cashPaise],
+                [t('online'), sc.onlinePaise],
+                [t('card'), sc.cardPaise],
+                ...methods.map((m) => [methodName(m), sc.extraPaise[m.id] ?? 0]),
+                [t('due'), sc.duePaise],
+                [t('shiftExpenses'), sc.shiftExpensesPaise],
+              ].map(([label, v]) => (
+                <div key={label as string} className="flex justify-between gap-2">
+                  <span className="truncate text-ink-2">{label}</span>
+                  <span className="num">{rupee(v as number)}</span>
+                </div>
+              ))}
+              <div className="col-span-2 mt-1 flex justify-between border-t border-dashed border-line pt-2 font-bold">
+                <span>{t('collected')}</span>
+                <span className="num">{rupee(sc.collectedPaise)}</span>
               </div>
-              <div className="num text-base font-bold">{rupee(sc.shiftExpensesPaise)}</div>
+              <div className="col-span-2 flex justify-between font-bold">
+                <span>{t('sale')}</span>
+                <span className="num">{rupee(sc.salePaise)}</span>
+              </div>
             </div>
-            <p className="mb-2 text-[11px] text-ink-3">{t('shiftExpensesHint')}</p>
-            <LineItemsEditor key={`exp-${shift.id}`} items={shift.expenses ?? []} disabled={locked} placeholder={t('expensePlaceholder')} onChange={(next) => edit((s) => (s.expenses = next))} />
+            <div className={cn('flex items-center justify-between gap-3 px-4 py-3', sc.diffPaise === 0 ? 'bg-ok-soft' : Math.abs(sc.diffPaise) <= tol ? 'bg-warn-soft' : 'bg-bad-soft')}>
+              <span className="flex items-center gap-1.5 text-sm font-semibold">
+                <UserRound className="h-4 w-4" /> {sc.complete ? t('status') : t('incomplete')}
+              </span>
+              {hasMoney ? <DiffBadge paise={sc.diffPaise} tolerance={tol} size="lg" /> : <span className="text-sm text-ink-3">—</span>}
+            </div>
           </div>
         </div>
-        <input className="input mt-4 text-sm" placeholder={t('remark')} value={shift.remark} disabled={locked} maxLength={200} onChange={(e) => edit((s) => (s.remark = e.target.value))} />
+
+        {/* Right: collections */}
+        <div className="card p-4">
+          <div className="mb-3 font-display font-bold">{t('collectionsTitle')}</div>
+          <div className="mb-4">
+            <span className="label flex items-center gap-1.5">
+              <Banknote className="h-3.5 w-3.5" /> {t('cash')}
+            </span>
+            <MoneyInput key={shift.id} value={shift.cashPaise} disabled={locked} onCommit={(v) => edit((s) => (s.cashPaise = v))} className="[&_input]:py-3 [&_input]:text-lg [&_input]:font-bold" ariaLabel={t('cash')} />
+            <span className="mt-1 block text-[11px] text-ink-3">{t('cashHint')}</span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+            <QuickAmountList key={`on-${shift.id}`} title={t('online')} icon={<Smartphone className="h-4 w-4" />} accent="bg-cng" entries={shift.online} disabled={locked} onChange={(next) => edit((s) => (s.online = next))} />
+            <QuickAmountList key={`card-${shift.id}`} title={t('card')} icon={<CreditCard className="h-4 w-4" />} accent="bg-premium" entries={shift.card} disabled={locked} onChange={(next) => edit((s) => (s.card = next))} />
+            {methods.map((m, i) => (
+              <QuickAmountList
+                key={`${m.id}-${shift.id}`}
+                title={methodName(m)}
+                icon={<QrCode className="h-4 w-4" />}
+                accent={METHOD_ACCENTS[i % METHOD_ACCENTS.length]}
+                entries={shift.extra?.[m.id] ?? []}
+                disabled={locked}
+                onChange={(next: Entry[]) => edit((s) => (s.extra = { ...(s.extra ?? {}), [m.id]: next }))}
+              />
+            ))}
+            <div className="sm:col-span-2 lg:col-span-1 xl:col-span-2">
+              <DueEditor key={`due-${shift.id}`} dues={shift.dues} locked={locked} customers={customers} onNewCustomer={onNewCustomer} onChange={(next) => edit((s) => (s.dues = next))} />
+            </div>
+            <div className="rounded-xl border border-line bg-sunk/60 p-3 sm:col-span-2 lg:col-span-1 xl:col-span-2">
+              <div className="mb-1 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm font-bold">
+                  <span className="grid h-7 w-7 place-items-center rounded-lg bg-bad text-white">
+                    <Receipt className="h-4 w-4" />
+                  </span>
+                  {t('shiftExpenses')}
+                </div>
+                <div className="num text-base font-bold">{rupee(sc.shiftExpensesPaise)}</div>
+              </div>
+              <p className="mb-2 text-[11px] text-ink-3">{t('shiftExpensesHint')}</p>
+              <LineItemsEditor key={`exp-${shift.id}`} items={shift.expenses ?? []} disabled={locked} placeholder={t('expensePlaceholder')} onChange={(next) => edit((s) => (s.expenses = next))} />
+            </div>
+          </div>
+          <input className="input mt-4 text-sm" placeholder={t('remark')} value={shift.remark} disabled={locked} maxLength={200} onChange={(e) => edit((s) => (s.remark = e.target.value))} />
+        </div>
       </div>
 
-      {/* Short / excess */}
-      <div className="card overflow-hidden">
-        <div className="space-y-1.5 px-4 py-4 text-sm">
-          {[
-            [t('cash'), sc.cashPaise],
-            [t('online'), sc.onlinePaise],
-            [t('card'), sc.cardPaise],
-            ...methods.map((m) => [methodName(m), sc.extraPaise[m.id] ?? 0]),
-            [t('due'), sc.duePaise],
-            [t('shiftExpenses'), sc.shiftExpensesPaise],
-          ].map(([label, v]) => (
-            <div key={label as string} className="flex justify-between">
-              <span className="text-ink-2">{label}</span>
-              <span className="num">{rupee(v as number)}</span>
-            </div>
-          ))}
-          <div className="flex justify-between border-t border-dashed border-line pt-2 font-bold">
-            <span>{t('collected')}</span>
-            <span className="num">{rupee(sc.collectedPaise)}</span>
-          </div>
-          <div className="flex justify-between font-bold">
-            <span>{t('sale')}</span>
-            <span className="num">{rupee(sc.salePaise)}</span>
-          </div>
-        </div>
-        <div className={cn('flex items-center justify-between gap-3 px-4 py-3', sc.diffPaise === 0 ? 'bg-ok-soft' : Math.abs(sc.diffPaise) <= tol ? 'bg-warn-soft' : 'bg-bad-soft')}>
-          <span className="flex items-center gap-1.5 text-sm font-semibold">
-            <UserRound className="h-4 w-4" /> {sc.complete ? t('status') : t('incomplete')}
-          </span>
-          {sc.salePaise > 0 || sc.collectedPaise > 0 ? <DiffBadge paise={sc.diffPaise} tolerance={tol} size="lg" /> : <span className="text-sm text-ink-3">—</span>}
-        </div>
-      </div>
-
-      {/* Actions */}
-      {!locked && (
-        <div className="sticky bottom-20 z-10 grid grid-cols-[auto_1fr] gap-2 rounded-2xl border border-line bg-bg/95 p-2 shadow-lift backdrop-blur">
-          <button className="btn-ghost px-4" onClick={onSave} disabled={save.kind === 'saving'}>
-            {save.kind === 'saving' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} {t('save')}
-          </button>
-          <button className="btn-primary py-3" onClick={onSubmit} disabled={save.kind === 'saving' || missing > 0 || sc.hasError}>
-            <Send className="h-4 w-4" /> {t('submitShift')}
-          </button>
-          {(missing > 0 || sc.hasError) && <p className="col-span-2 text-center text-xs text-ink-3">{sc.hasError ? t('fixReadingsFirst') : `${t('enterAllClosings')} (${missing})`}</p>}
-        </div>
-      )}
+      {/* Phone: actions stay above the tab bar */}
+      {actions('sticky bottom-[84px] z-10 rounded-2xl border border-line bg-surface/95 p-2 shadow-lift backdrop-blur lg:hidden')}
     </>
   );
 }
