@@ -620,13 +620,13 @@ function WorkerInput({ value, disabled, onCommit }: { value: string; disabled: b
 }
 
 /** One nozzle's opening / closing / testing row. `lockOpening` = carried forward, not editable (staff app). */
-export function NozzleRowView({ row, locked, lockOpening, onChange }: { row: NozzleRow; locked: boolean; lockOpening?: boolean; onChange: (id: string, f: 'opening' | 'closing' | 'testing', v: string) => void }) {
+export function NozzleRowView({ row, locked, lockOpening, compact, onChange }: { row: NozzleRow; locked: boolean; lockOpening?: boolean; compact?: boolean; onChange: (id: string, f: 'opening' | 'closing' | 'testing', v: string) => void }) {
   const { t } = useStore();
   const { nozzle, reading } = row;
   const err = row.error && { closingLess: t('errClosingLess'), invalid: t('errInvalid'), testingTooHigh: t('errTesting') }[row.error];
   return (
     <div className={cn('px-4 py-3 sm:px-5', row.status === 'error' && 'bg-bad-soft/50')}>
-      <div className="grid grid-cols-[1fr_1fr_64px] items-end gap-x-2 gap-y-2 sm:gap-x-3 md:grid-cols-[96px_1fr_1fr_64px_104px] md:items-center">
+      <div className={cn('grid grid-cols-[1fr_1fr_64px] items-end gap-x-2 gap-y-2 sm:gap-x-3 md:items-center', compact ? 'md:grid-cols-[64px_1fr_1fr_52px_84px] md:gap-x-2' : 'md:grid-cols-[96px_1fr_1fr_64px_104px]')}>
         <div className="col-span-3 flex items-center justify-between md:col-span-1 md:block">
           <div className="flex items-center gap-2 md:flex-col md:items-start md:gap-1">
             <span className="font-display text-base font-extrabold">{nozzle.label}</span>
@@ -654,7 +654,7 @@ export function NozzleRowView({ row, locked, lockOpening, onChange }: { row: Noz
             inputMode="decimal"
             value={reading.closing}
             disabled={locked}
-            placeholder={reading.opening || '0.000'}
+            placeholder={lockOpening ? t('closing') : reading.opening || '0.000'}
             onChange={(e) => onChange(nozzle.id, 'closing', e.target.value)}
           />
         </label>
