@@ -73,6 +73,8 @@ export interface CloudState {
   needLogin: boolean;
   /** Env vars the server says are missing. */
   missing: string[];
+  /** Server can send WhatsApp messages automatically (Cloud API keys set). */
+  waAuto: boolean;
   loaded: boolean;
   error?: string;
 }
@@ -139,7 +141,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [cloud, setCloud] = useState<CloudState>({ mode: 'checking', status: 'synced', needLogin: false, missing: [], loaded: false });
+  const [cloud, setCloud] = useState<CloudState>({ mode: 'checking', status: 'synced', needLogin: false, missing: [], loaded: false, waAuto: false });
 
   const dataRef = useRef(data);
   dataRef.current = data;
@@ -268,6 +270,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       writeLS(MODE_KEY, 'cloud');
+      patchCloud({ waAuto: !!h.whatsapp });
       if (!h.configured) {
         patchCloud({ mode: 'cloud', missing: h.missing });
         return;

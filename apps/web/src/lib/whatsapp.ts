@@ -85,3 +85,30 @@ export function buildDueMessage(data: AppData, customer: Customer, lang: Lang = 
   if (rs.stationPhone.trim()) lines.push(`${L.contact}: ${rs.stationPhone.trim()}`);
   return lines.join('\n');
 }
+
+/** Values for the approved "due_reminder" template ({{1}}…{{5}}). */
+export function templateParams(data: AppData, customer: Customer) {
+  const rs = reminderSettings(data);
+  const bal = customerBalances(data).get(customer.id)?.balancePaise ?? 0;
+  return {
+    customer: customer.name.trim(),
+    station: data.settings.stationName.trim(),
+    balance: rupee(bal, { symbol: false }),
+    upi: rs.upiId.trim() || '-',
+    contact: rs.stationPhone.trim() || '-',
+  };
+}
+
+/**
+ * The template wording to submit to Meta – shown in the app as a preview and
+ * in docs/WHATSAPP_SETUP.md. Keep both in step.
+ */
+export const TEMPLATE_TEXT: Record<Lang, string> = {
+  en: 'Namaskar {{1}}, this is a reminder from {{2}} about your due (credit) amount. Outstanding balance: Rs. {{3}}. Please pay at the pump in cash or by UPI ({{4}}). For any query call {{5}}. Thank you.',
+  bn: 'নমস্কার {{1}}, {{2}} থেকে আপনার বাকি টাকার কথা মনে করিয়ে দিচ্ছি। মোট বাকি: Rs. {{3}}। অনুগ্রহ করে পাম্পে নগদ বা ইউপিআই ({{4}})-তে টাকা দিন। কোনো প্রশ্নে ফোন করুন {{5}}। ধন্যবাদ।',
+};
+
+export function templatePreview(params: ReturnType<typeof templateParams>, lang: Lang): string {
+  const vals = [params.customer, params.station, params.balance, params.upi, params.contact];
+  return TEMPLATE_TEXT[lang].replace(/\{\{(\d)\}\}/g, (_, n) => vals[Number(n) - 1] ?? '');
+}

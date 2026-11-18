@@ -4,6 +4,14 @@ export interface Health {
   ok: boolean;
   configured: boolean;
   missing: string[];
+  /** Automatic WhatsApp sending (Cloud API) is set up on the server. */
+  whatsapp?: boolean;
+}
+
+export interface WhatsAppSendBody {
+  to: string;
+  lang: 'en' | 'bn';
+  params: { customer: string; station: string; balance: string; upi: string; contact: string };
 }
 
 export interface ServerSnapshot {
@@ -90,6 +98,7 @@ export const api = {
   login: (password: string) => request<{ token: string; expiresAt: number }>('login', { method: 'POST', body: JSON.stringify({ password }) }),
   snapshot: (sinceRev?: number) => request<ServerSnapshot | { unchanged: true; rev: number }>(`data${sinceRev ? `?rev=${sinceRev}` : ''}`),
   push: (patch: Patch) => request<{ ok: true; rev: number }>('data', { method: 'PUT', body: JSON.stringify(patch) }),
+  sendWhatsApp: (body: WhatsAppSendBody) => request<{ ok: true; id: string | null }>('whatsapp', { method: 'POST', body: JSON.stringify(body) }),
 };
 
 /* ---------- diffing against the last state the server confirmed ---------- */

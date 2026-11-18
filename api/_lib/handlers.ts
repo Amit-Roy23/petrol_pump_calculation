@@ -1,12 +1,13 @@
 import { checkPassword, issueToken, verifyToken } from './auth';
-import { missingEnv } from './env';
+import { missingEnv, whatsappConfig } from './env';
 import { bearer, queryParam, readJson, send, type Req, type Res } from './http';
 import type { Store } from './store';
 import { parsePatch } from './validate';
 
 export async function health(_req: Req, res: Res) {
   const missing = missingEnv();
-  send(res, 200, { ok: true, app: 'fuel-ledger', configured: missing.length === 0, missing });
+  // whatsapp: true when automatic sending is set up (no secrets returned).
+  send(res, 200, { ok: true, app: 'fuel-ledger', configured: missing.length === 0, missing, whatsapp: whatsappConfig().ready });
 }
 
 export async function login(req: Req, res: Res) {
