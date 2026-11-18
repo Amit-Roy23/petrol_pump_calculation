@@ -220,7 +220,7 @@ function BrandRow({ r, locked, onChange }: { r: WineRowCalc; locked: boolean; on
             inputMode="numeric"
             enterKeyHint="next"
             value={r.row.closing}
-            placeholder={String(r.available)}
+            placeholder={String(r.available - r.billed)}
             disabled={locked}
             aria-label={`${r.product.name} ${r.product.size} ${t('closingCount')}`}
             onChange={(e) => onChange({ closing: e.target.value.replace(/\D/g, '') })}
@@ -235,7 +235,12 @@ function BrandRow({ r, locked, onChange }: { r: WineRowCalc; locked: boolean; on
         <div className="col-span-3 flex items-center justify-between gap-2 md:contents">
           <span className={cn('num text-center font-bold md:block', r.sold ? 'text-ink' : 'text-ink-3')}>
             <span className="text-xs font-normal text-ink-3 md:hidden">{t('sold')}: </span>
-            {r.counted ? r.sold : '—'}
+            {r.counted || r.billed ? r.sold : '—'}
+            {r.billed > 0 && (
+              <span className="block text-[10px] font-semibold text-premium">
+                {r.billed} {t('billedLabel')}
+              </span>
+            )}
           </span>
           <span className="num text-right font-bold">{rupee(r.amountPaise)}</span>
         </div>
@@ -243,6 +248,11 @@ function BrandRow({ r, locked, onChange }: { r: WineRowCalc; locked: boolean; on
       {r.error && (
         <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-bad">
           <AlertTriangle className="h-3.5 w-3.5" /> {t('closingTooHigh')} ({r.available})
+        </p>
+      )}
+      {!r.error && r.unbilled > 0 && r.billed > 0 && (
+        <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-warn">
+          <AlertTriangle className="h-3.5 w-3.5" /> {r.unbilled} {t('bottles')} {t('unbilledWarn')}
         </p>
       )}
     </div>

@@ -427,3 +427,57 @@ describe('wine invoices, delete and day-end split', () => {
     expect(fresh.rows.some((r) => r.product.id === p.id)).toBe(false);
   });
 });
+
+describe('wine counter sales (Sell screen)', () => {
+  function setup() {
+    const data = sampleData();
+    const w = sampleWine();
+    data.settings.wine = w.settings;
+    data.wineDays = w.days;
+    const [w750, , , , , strong] = data.settings.wine.products;
+    const day = createWineDay(data, '2026-06-20');
+    day.sales = [
+      { id: 's1', time: '10:05', mode: 'cash', customer: '', lines: [{ productId: w750.id, qty: 2, mrpPaise: 82000 }] },
+      { id: 's2', time: '11:40', mode: 'online', customer: '', lines: [{ productId: w750.id, qty: 1, mrpPaise: 82000 }, { productId: strong.id, qty: 6, mrpPaise: 18000 }] },
+      { id: 's3', time: '18:20', mode: 'due', customer: 'Hotel', lines: [{ productId: strong.id, qty: 12, mrpPaise: 18000 }] },
+    ];
+    data.wineDays['2026-06-20'] = day;
+    return { data, day, w750, strong };
+  }
+
+  it('bills reduce stock and make the sale without any count', () => {
+    const { data, day, w750, strong } = setup();
+    const c = computeWineDay(data, day);
+    const wr = c.rows.find((r) => r.product.id === w750.id)!;
+    expect(wr.billed).toBe(3);
+    expect(wr.sold).toBe(3);
+    expect(wr.inStock).toBe(41 - 3);
+    expect(c.rows.find((r) => r.product.id === strong.id)!.inStock).toBe(168 - 18);
+    expect(c.billCount).toBe(3);
+    expect(c.salePaise).toBe(3 * 82000 + 18 * 18000);
+    expect(wineOpeningStock(data, '2026-06-21')[w750.id]).toBe(38);
+  });
+
+  it('payment split follows the bills', () => {
+    const { data, day } = setup();
+    const c = computeWineDay(data, day);
+    expect(c.onlinePaise).toBe(82000 + 6 * 18000);
+    expect(c.duePaise).toBe(12 * 18000);
+    expect(c.cardPaise).toBe(0);
+    expect(c.cashSalePaise).toBe(2 * 82000);
+  });
+
+  it('a count after billing shows bottles gone without a bill', () => {
+    const { data, day, w750 } = setup();
+    day.rows[w750.id].closing = '36'; // 41 − 36 = 5 gone, only 3 billed
+    const r = computeWineDay(data, day).rows.find((x) => x.product.id === w750.id)!;
+    expect(r.sold).toBe(5);
+    expect(r.unbilled).toBe(2);
+  });
+
+  it('cannot bill more than in stock', () => {
+    const { data, day, w750 } = setup();
+    day.sales!.push({ id: 's4', time: '20:00', mode: 'cash', customer: '', lines: [{ productId: w750.id, qty: 100, mrpPaise: 82000 }] });
+    expect(computeWineDay(data, day).rows.find((x) => x.product.id === w750.id)!.error).toBe(true);
+  });
+});
