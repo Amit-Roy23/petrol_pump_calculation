@@ -132,8 +132,9 @@ export function addShift(settings: Settings, sheet: MachineSheet, machine: Machi
 }
 
 /**
- * Sets one reading. Changing a shift's closing also updates the next shift's
- * opening when that opening was blank or still equal to the old closing. Mutates.
+ * Sets one reading. The handover reading is one number: changing a shift's
+ * closing also updates the next shift's opening (when blank or still equal to
+ * the old closing), and an opening fills the previous shift's blank closing. Mutates.
  */
 export function setShiftReading(sheet: MachineSheet, shiftIndex: number, nozzleId: string, field: keyof NozzleReading, value: string) {
   const shifts = ensureShifts(sheet);
@@ -141,6 +142,14 @@ export function setShiftReading(sheet: MachineSheet, shiftIndex: number, nozzleI
   if (!sh) return;
   const cur = sh.readings[nozzleId] ?? blankReading();
   sh.readings[nozzleId] = { ...cur, [field]: value };
+  if (field === 'opening') {
+    // Handover: the previous worker's missing closing is this opening.
+    const prev = shifts[shiftIndex - 1];
+    if (!prev) return;
+    const pr = prev.readings[nozzleId] ?? blankReading();
+    if (!pr.closing.trim() || pr.closing.trim() === cur.opening.trim()) prev.readings[nozzleId] = { ...pr, closing: value };
+    return;
+  }
   if (field !== 'closing') return;
   const next = shifts[shiftIndex + 1];
   if (!next) return;
@@ -274,15 +283,40 @@ export function sortedDates(data: AppData) {
   return Object.keys(data.days).sort();
 }
 
-/** Closing reading of the most recent earlier day for that nozzle (carry forward). */
+/**
+ * A shift somebody actually worked: has a worker, a closing reading or money.
+ * Untouched placeholder shifts (e.g. the blank "Morning" of a day nobody used) are skipped.
+ */
+export function shiftWorked(sh: ShiftSheet): boolean {
+  return (
+    !!sh.staffId ||
+    !!sh.attendant.trim() ||
+    Object.values(sh.readings ?? {}).some((r) => r?.closing?.trim()) ||
+    sh.cashPaise > 0 ||
+    sh.online.length > 0 ||
+    sh.card.length > 0 ||
+    sh.dues.length > 0 ||
+    Object.values(sh.extra ?? {}).some((x) => x.length > 0) ||
+    (sh.expenses ?? []).length > 0
+  );
+}
+
+/**
+ * Opening for the first shift of `date`: the closing of the last shift that was
+ * worked on this nozzle's machine on an earlier day. If that worker never entered
+ * the closing, the opening is left blank to be read off the meter – falling back
+ * to an older reading would count the same litres twice.
+ */
 export function previousClosing(data: AppData, date: string, nozzle: NozzleConfig): string {
   const dates = sortedDates(data).filter((d) => d < date).reverse();
   for (const d of dates) {
     for (const sheet of Object.values(data.days[d].sheets)) {
-      for (const shift of [...getShifts(sheet)].reverse()) {
-        const r = shift.readings[nozzle.id];
-        if (r && isValidReading(r.closing)) return r.closing.trim();
-      }
+      const shifts = getShifts(sheet);
+      if (!shifts.some((sh) => sh.readings?.[nozzle.id])) continue; // another machine
+      const last = [...shifts].reverse().find(shiftWorked);
+      if (!last) continue; // machine not used that day
+      const c = last.readings[nozzle.id]?.closing ?? '';
+      return isValidReading(c) ? c.trim() : '';
     }
   }
   return nozzle.initialReading;

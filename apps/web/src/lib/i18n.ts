@@ -543,6 +543,10 @@ const en = {
   notSavedHint: 'Not saved yet. Check the internet and press Save.',
   staffEntered: 'Filled in by staff',
   notPetrolStaff: 'You are not set up for the petrol pump. Ask the owner.',
+  readMeter: 'Read meter',
+  lockOpenShifts: 'These staff have not submitted their shift yet – lock the day anyway? They will not be able to save after this',
+  openingBlankHint: 'The previous worker did not enter a closing reading. Read the meter and enter the opening – it also becomes their closing.',
+  handedOverHint: 'The next worker took over from your closing reading – only the owner can change it now.',
 } as const;
 
 export type TKey = keyof typeof en;
@@ -1083,6 +1087,10 @@ const bn: Partial<Record<TKey, string>> = {
   notSavedHint: 'এখনও সেভ হয়নি। ইন্টারনেট দেখে সেভ চাপুন।',
   staffEntered: 'কর্মী লিখেছেন',
   notPetrolStaff: 'আপনি পেট্রোল পাম্পের জন্য সেট নেই। মালিককে বলুন।',
+  readMeter: 'মিটার দেখুন',
+  lockOpenShifts: 'এই কর্মীরা এখনও শিফট জমা দেননি – তবুও দিন লক করবেন? এরপর তাঁরা সেভ করতে পারবেন না',
+  openingBlankHint: 'আগের কর্মী শেষ রিডিং লেখেননি। মিটার দেখে শুরুর রিডিং লিখুন – সেটাই তাঁর শেষ রিডিং হবে।',
+  handedOverHint: 'পরের কর্মী আপনার শেষ রিডিং থেকে শুরু করেছেন – এখন শুধু মালিক বদলাতে পারবেন।',
 };
 
 export const dict: Record<'en' | 'bn', Partial<Record<TKey, string>>> = { en, bn };

@@ -72,21 +72,27 @@ export function StaffPetrol({ token, onLogout }: { token: string; onLogout: () =
   );
 
   const load = useCallback(
-    async (d: string) => {
+    async (d: string, quiet = false) => {
       setLoadError('');
-      setWork(null);
-      setSel(null);
+      if (!quiet) {
+        setWork(null);
+        setSel(null);
+      }
       try {
         const w = await attendanceApi.petrol(token, d);
         setWork(w);
         setDay(w.day ?? blankDay(w, d));
         setNewCustomers([]);
         setSave({ kind: 'idle' });
-        // Re-open the shift that's still running, if any.
-        const mine = Object.values(w.day?.sheets ?? {}).flatMap((s) => getShifts(s).filter((x) => x.staffId === w.me.id && !x.submittedAt).map((x) => ({ machineId: s.machineId, shiftId: x.id })));
-        if (mine.length === 1) setSel(mine[0]);
+        const mine = Object.values(w.day?.sheets ?? {}).flatMap((s) => getShifts(s).filter((x) => x.staffId === w.me.id).map((x) => ({ machineId: s.machineId, shiftId: x.id, open: !x.submittedAt })));
+        // Keep the shift that's open on screen; else re-open the one still running.
+        setSel((prev) => {
+          if (prev && mine.some((m) => m.machineId === prev.machineId && m.shiftId === prev.shiftId)) return prev;
+          const running = mine.filter((m) => m.open);
+          return running.length === 1 ? { machineId: running[0].machineId, shiftId: running[0].shiftId } : null;
+        });
       } catch (e) {
-        setLoadError(fail(e));
+        if (!quiet) setLoadError(fail(e));
       }
     },
     [token, fail]
@@ -94,6 +100,18 @@ export function StaffPetrol({ token, onLogout }: { token: string; onLogout: () =
 
   useEffect(() => {
     void load(date);
+  }, [date, load]);
+
+  // Coming back to the app (phone unlocked, tab switched): fetch the latest
+  // readings – another worker may have saved meanwhile. Never drops unsaved typing.
+  const saveKind = useRef(save.kind);
+  saveKind.current = save.kind;
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && saveKind.current !== 'dirty' && saveKind.current !== 'saving' && saveKind.current !== 'error') void load(date, true);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, [date, load]);
 
   const app = useMemo(() => (work && day ? toAppData(work, day, newCustomers, lang) : null), [work, day, newCustomers, lang]);
@@ -418,6 +436,11 @@ function ShiftEditor({
   const time = (iso: string) => new Date(iso).toLocaleTimeString(lang === 'bn' ? 'bn-IN' : 'en-IN', { hour: '2-digit', minute: '2-digit' });
   const missing = sc.rows.filter((r) => r.status !== 'ok').length;
 
+  // Next worker already took over from my closing (same rule as the server).
+  const nextShift = calc.shifts[sc.index + 1]?.shift;
+  const nextStarted = !!nextShift && (!!nextShift.staffId || !!nextShift.attendant.trim());
+  const handedOver = new Set(nextStarted ? sc.rows.filter((r) => /^\d+(\.\d{1,3})?$/.test(nextShift!.readings[r.nozzle.id]?.opening?.trim() ?? '')).map((r) => r.nozzle.id) : []);
+  const openingBlank = !locked && sc.rows.some((r) => !r.reading.opening.trim());
   const diffTone = sc.diffPaise === 0 ? 'text-ok' : Math.abs(sc.diffPaise) <= tol ? 'text-warn' : 'text-bad';
   const hasMoney = sc.salePaise > 0 || sc.collectedPaise > 0;
   const actions = (className: string) =>
@@ -512,9 +535,11 @@ function ShiftEditor({
               <span>{t('testing')}</span>
               <span className="text-right">{t('litres')}</span>
             </div>
+            {openingBlank && <p className="border-b border-line bg-warn-soft px-4 py-2 text-xs font-semibold text-warn">⚠ {t('openingBlankHint')}</p>}
+            {!locked && handedOver.size > 0 && <p className="border-b border-line bg-sunk px-4 py-2 text-xs font-semibold text-ink-2">🔒 {t('handedOverHint')}</p>}
             <div className="divide-y divide-line bg-surface/80">
               {sc.rows.map((row) => (
-                <NozzleRowView key={row.nozzle.id} row={row} locked={locked} lockOpening={!!row.reading.opening.trim()} compact onChange={onReading} />
+                <NozzleRowView key={row.nozzle.id} row={row} locked={locked} lockOpening={!!row.reading.opening.trim()} lockClosing={handedOver.has(row.nozzle.id)} compact onChange={onReading} />
               ))}
             </div>
             <div className="space-y-2 border-t border-line bg-sunk/70 px-4 py-3">

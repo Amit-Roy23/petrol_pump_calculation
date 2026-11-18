@@ -32,6 +32,11 @@ export default function DaySheet() {
   const locked = day.locked;
 
   const setLocked = (v: boolean) => {
+    // Staff still filling in a shift on their phone? Locking stops them saving.
+    if (v) {
+      const open = calc.sheets.flatMap((sc) => sc.shifts.filter((x) => x.shift.staffUpdatedAt && !x.shift.submittedAt).map((x) => `${x.staffName} (${sc.machine.name})`));
+      if (open.length && !confirm(`${t('lockOpenShifts')}: ${open.join(', ')}`)) return;
+    }
     // updateDay ignores locked days, so lock/unlock goes through the raw updater.
     update((d) => {
       if (!d.days[date]) d.days[date] = structuredClone(day);
@@ -620,7 +625,7 @@ function WorkerInput({ value, disabled, onCommit }: { value: string; disabled: b
 }
 
 /** One nozzle's opening / closing / testing row. `lockOpening` = carried forward, not editable (staff app). */
-export function NozzleRowView({ row, locked, lockOpening, compact, onChange }: { row: NozzleRow; locked: boolean; lockOpening?: boolean; compact?: boolean; onChange: (id: string, f: 'opening' | 'closing' | 'testing', v: string) => void }) {
+export function NozzleRowView({ row, locked, lockOpening, lockClosing, compact, onChange }: { row: NozzleRow; locked: boolean; lockOpening?: boolean; lockClosing?: boolean; compact?: boolean; onChange: (id: string, f: 'opening' | 'closing' | 'testing', v: string) => void }) {
   const { t } = useStore();
   const { nozzle, reading } = row;
   const err = row.error && { closingLess: t('errClosingLess'), invalid: t('errInvalid'), testingTooHigh: t('errTesting') }[row.error];
@@ -643,19 +648,21 @@ export function NozzleRowView({ row, locked, lockOpening, compact, onChange }: {
             disabled={locked}
             readOnly={lockOpening}
             tabIndex={lockOpening ? -1 : undefined}
-            placeholder="0.000"
+            placeholder={lockOpening === false ? t('readMeter') : '0.000'}
             onChange={(e) => !lockOpening && onChange(nozzle.id, 'opening', e.target.value)}
           />
         </label>
         <label className="block">
           <span className="label md:hidden">{t('closing')}</span>
           <input
-            className={cn('input num px-2.5 py-2 text-[14px] font-semibold', row.status === 'error' && 'border-bad', row.status === 'ok' && 'border-ok/50')}
+            className={cn('input num px-2.5 py-2 text-[14px] font-semibold', row.status === 'error' && 'border-bad', row.status === 'ok' && 'border-ok/50', lockClosing && 'bg-sunk')}
             inputMode="decimal"
             value={reading.closing}
             disabled={locked}
+            readOnly={lockClosing}
+            tabIndex={lockClosing ? -1 : undefined}
             placeholder={lockOpening ? t('closing') : reading.opening || '0.000'}
-            onChange={(e) => onChange(nozzle.id, 'closing', e.target.value)}
+            onChange={(e) => !lockClosing && onChange(nozzle.id, 'closing', e.target.value)}
           />
         </label>
         <label className="block">

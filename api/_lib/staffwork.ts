@@ -301,20 +301,25 @@ function cleanLines(v: unknown): Line[] {
   return out;
 }
 
-/** Closing of the latest earlier reading for a nozzle (same rule as the web app). */
-function carriedOpening(nozzle: Nozzle, shiftsBefore: StaffShift[], previousDays: Day[]): string {
-  for (const sh of [...shiftsBefore].reverse()) {
-    const c = sh.readings?.[nozzle.id]?.closing?.trim();
-    if (c && isReading(c)) return c;
-  }
+/**
+ * Opening for a shift (same rule as the web app's previousClosing):
+ *  - later shift of the day → the previous worked shift's closing;
+ *  - first shift → the last worked shift of the latest earlier day.
+ * If that closing was never entered it stays blank and the worker reads it off
+ * the meter – an older reading would count the same litres twice.
+ */
+function carriedOpening(nozzle: Nozzle, machineId: string, prevShift: StaffShift | undefined, previousDays: Day[]): string {
+  const closingOf = (sh: StaffShift) => {
+    const c = sh.readings?.[nozzle.id]?.closing?.trim() ?? '';
+    return isReading(c) ? c : '';
+  };
+  if (prevShift) return closingOf(prevShift);
   for (const d of previousDays) {
-    for (const sheet of Object.values(d.sheets ?? {})) {
-      const shifts = sheet.shifts && sheet.shifts.length ? sheet.shifts : [legacyShift(sheet)];
-      for (const sh of [...shifts].reverse()) {
-        const c = sh.readings?.[nozzle.id]?.closing?.trim();
-        if (c && isReading(c)) return c;
-      }
-    }
+    const sheet = d.sheets?.[machineId];
+    if (!sheet) continue;
+    const shifts = sheet.shifts && sheet.shifts.length ? sheet.shifts : [legacyShift(sheet)];
+    const last = [...shifts].reverse().find((sh) => !unclaimed(sh));
+    if (last) return closingOf(last);
   }
   return nozzle.initialReading ?? '';
 }
@@ -379,12 +384,19 @@ export async function petrolSave(store: Store, me: WorkStaff, body: SaveBody, no
   /* Readings: opening carries forward (staff can only fill a blank one). */
   const prevDays = (before as unknown as Day[]).filter((d) => d.date < date);
   const readings: Record<string, Reading> = {};
+  const prevShift = [...shifts.slice(0, index)].reverse().find((sh) => !unclaimed(sh));
+  const next = shifts[index + 1];
+  const nextTookOver = !!next && !unclaimed(next);
   for (const n of machine.nozzles) {
     const old = cur.readings?.[n.id] ?? blank();
     const sent = (input.readings as Record<string, Partial<Reading>> | undefined)?.[n.id] ?? {};
-    const carried = old.opening?.trim() || carriedOpening(n, shifts.slice(0, index), prevDays);
+    const carried = old.opening?.trim() || carriedOpening(n, machine.id, prevShift, prevDays);
     const opening = carried || cleanReading(sent.opening);
-    readings[n.id] = { opening, closing: cleanReading(sent.closing), testing: cleanReading(sent.testing) };
+    let closing = cleanReading(sent.closing);
+    // The next worker already took over from a reading: that is my closing.
+    const handover = next?.readings?.[n.id]?.opening?.trim() ?? '';
+    if (nextTookOver && isReading(handover)) closing = handover;
+    readings[n.id] = { opening, closing, testing: cleanReading(sent.testing) };
   }
 
   /* Dues: known customers, plus names the staff member typed in. */
@@ -420,7 +432,7 @@ export async function petrolSave(store: Store, me: WorkStaff, body: SaveBody, no
   if (submit) {
     for (const n of machine.nozzles) {
       const r = readings[n.id];
-      if (!isReading(r.opening) || !isReading(r.closing)) throw new WorkError(400, `Enter the closing reading of every nozzle before submitting (${n.label})`);
+      if (!isReading(r.opening) || !isReading(r.closing)) throw new WorkError(400, `Enter the opening and closing reading of every nozzle before submitting (${n.label})`);
       if (Number(r.closing) < Number(r.opening)) throw new WorkError(400, `Closing is less than opening on ${n.label}`);
     }
   }
@@ -442,8 +454,17 @@ export async function petrolSave(store: Store, me: WorkStaff, body: SaveBody, no
     ...(submit ? { submittedAt: stamp, submittedBy: me.name } : {}),
   };
 
+  /* Handover backwards: the previous worker left without a closing → it is my opening. */
+  const prevSlot = shifts[index - 1];
+  if (prevSlot) {
+    for (const n of machine.nozzles) {
+      const br = prevSlot.readings?.[n.id] ?? blank();
+      const opening = readings[n.id].opening;
+      if (!br.closing?.trim() && isReading(opening)) prevSlot.readings = { ...prevSlot.readings, [n.id]: { ...br, closing: opening } };
+    }
+  }
+
   /* The next shift on this machine opens where mine closes (if it still matches). */
-  const next = shifts[index + 1];
   if (next) {
     for (const n of machine.nozzles) {
       const nr = next.readings?.[n.id] ?? blank();
