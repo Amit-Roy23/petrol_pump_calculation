@@ -15,7 +15,7 @@ import {
 import { sampleData, emptyData } from '../src/lib/seed';
 import { parseAmountExpr, splitAmounts } from '../src/lib/util';
 import { computeLpgDay, createLpgDay, lpgOpeningStock, sampleLpg } from '../src/lib/lpg';
-import { computeWineDay, createWineDay, sampleWine, wineCategoryOptions, wineOpeningStock } from '../src/lib/wine';
+import { computeWineDay, createWineDay, productUsed, sampleWine, wineCategoryOptions, wineOpeningStock } from '../src/lib/wine';
 
 describe('notebook page 19/06/2026', () => {
   const data = sampleData();
@@ -376,5 +376,54 @@ describe('wine categories', () => {
     expect(opts).toContain('Bhang');
     expect(opts).toContain('Toddy');
     expect(opts.filter((c) => c.toLowerCase() === 'whisky')).toHaveLength(1);
+  });
+});
+
+describe('wine invoices, delete and day-end split', () => {
+  function wineData() {
+    const data = sampleData();
+    const w = sampleWine();
+    data.settings.wine = w.settings;
+    data.wineDays = w.days;
+    return data;
+  }
+
+  it('invoice bottles add to the old stock and to the next day', () => {
+    const data = wineData();
+    const w750 = data.settings.wine!.products[0];
+    const day = createWineDay(data, '2026-06-20');
+    day.invoices = [{ id: 'i1', number: 'INV-101', supplier: 'Depot', note: '', lines: [{ id: 'l1', productId: w750.id, qty: 24, costPaise: 70000 }] }];
+    data.wineDays!['2026-06-20'] = day;
+    const c = computeWineDay(data, day);
+    const row = c.rows.find((r) => r.product.id === w750.id)!;
+    expect(row.opening).toBe(41);
+    expect(row.invoiceQty).toBe(24);
+    expect(row.available).toBe(65); // old 41 + new 24
+    expect(c.invoiceBottles).toBe(24);
+    expect(c.invoiceAmountPaise).toBe(24 * 70000);
+    // Not counted yet → nothing sold, all 65 carry to the next day.
+    expect(wineOpeningStock(data, '2026-06-21')[w750.id]).toBe(65);
+    // Counted 60 → 5 sold.
+    day.rows[w750.id].closing = '60';
+    expect(computeWineDay(data, day).rows.find((r) => r.product.id === w750.id)!.sold).toBe(5);
+  });
+
+  it('day-end split: cash = sale − online − card − due', () => {
+    const data = wineData();
+    const c = computeWineDay(data, data.wineDays!['2026-06-19']);
+    expect(c.cashSalePaise).toBe(c.salePaise - c.onlinePaise - c.cardPaise - c.duePaise);
+    expect(c.cashSalePaise + c.onlinePaise + c.cardPaise + c.duePaise).toBe(c.salePaise);
+  });
+
+  it('a deleted brand with history still counts in past days but not new ones', () => {
+    const data = wineData();
+    const p = data.settings.wine!.products[0];
+    expect(productUsed(data, p.id)).toBe(true);
+    p.deleted = true;
+    p.active = false;
+    const past = computeWineDay(data, data.wineDays!['2026-06-19']);
+    expect(past.rows.some((r) => r.product.id === p.id)).toBe(true);
+    const fresh = computeWineDay(data, createWineDay(data, '2026-06-25'));
+    expect(fresh.rows.some((r) => r.product.id === p.id)).toBe(false);
   });
 });

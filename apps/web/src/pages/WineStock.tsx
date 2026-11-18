@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { Package, Pencil, Plus, Search, Trash2, Wine } from 'lucide-react';
+import { Package, PackagePlus, Pencil, Plus, Search, Trash2, Wine } from 'lucide-react';
 import { useStore } from '../lib/store';
-import { WINE_CATEGORIES, wineCategoryOptions, wineOpeningStock, wineSettings } from '../lib/wine';
+import { WINE_CATEGORIES, allInvoices, invoiceTotal, liveProducts, productUsed, wineCategoryOptions, wineOpeningStock, wineSettings } from '../lib/wine';
+import { WineInvoiceModal, newInvoiceTarget, type InvoiceTarget } from '../components/WineInvoiceModal';
 import type { WineProduct } from '../lib/types';
-import { cn, paiseToInput, parseAmountExpr, rupee, todayISO, uid } from '../lib/util';
+import { cn, dateLabel, paiseToInput, parseAmountExpr, rupee, todayISO, uid } from '../lib/util';
 import { Card, Empty, Field, Modal, Stat } from '../components/ui';
 
 const NEW_CAT = '__new__';
@@ -11,22 +12,55 @@ const NEW_CAT = '__new__';
 const blank = (): WineProduct => ({ id: '', name: '', billName: '', size: '750 ml', category: 'Whisky', mrpPaise: 0, costPaise: 0, openingStock: 0, lowStock: 6, active: true });
 
 export default function WineStock() {
-  const { data, update, t, toast } = useStore();
+  const { data, update, t, toast, date } = useStore();
   const st = wineSettings(data);
+  const lang = data.settings.language;
   const [q, setQ] = useState('');
   const [editing, setEditing] = useState<WineProduct | null>(null);
+  const [invoice, setInvoice] = useState<InvoiceTarget | null>(null);
+  const invoices = allInvoices(data);
+  const live = liveProducts(st);
 
   // Stock right now = closing after the last recorded day.
   const stock = useMemo(() => wineOpeningStock(data, '9999-12-31'), [data]);
-  const used = (id: string) => Object.values(data.wineDays ?? {}).some((d) => d.rows[id] && (d.rows[id].received || d.rows[id].breakage || d.rows[id].closing));
+  const used = (id: string) => productUsed(data, id);
+
+  /** Delete: brands with history are hidden but kept so past days still add up. */
+  const removeBrand = (p: WineProduct) => {
+    const hasHistory = used(p.id);
+    if (!confirm(hasHistory ? t('deleteBrandUsedConfirm') : t('deleteBrandConfirm'))) return;
+    const before = structuredClone(st.products);
+    update((d) => {
+      const ws = structuredClone(wineSettings(d));
+      ws.products = hasHistory ? ws.products.map((x) => (x.id === p.id ? { ...x, deleted: true, active: false } : x)) : ws.products.filter((x) => x.id !== p.id);
+      d.settings.wine = ws;
+    });
+    setEditing(null);
+    toast(`${t('removedBrand')}: ${p.name} ${p.size}`, 'ok', {
+      label: t('undo'),
+      run: () =>
+        update((d) => {
+          d.settings.wine = { ...structuredClone(wineSettings(d)), products: before };
+        }),
+    });
+  };
+
+  const removeInvoice = (dateOf: string, id: string) => {
+    if (!confirm(t('deleteInvoiceConfirm'))) return;
+    if (data.wineDays?.[dateOf]?.locked) return toast(t('dayLocked'), 'warn');
+    update((d) => {
+      const day = d.wineDays?.[dateOf];
+      if (day) day.invoices = (day.invoices ?? []).filter((x) => x.id !== id);
+    });
+  };
 
   const needle = q.trim().toLowerCase();
-  const list = st.products
+  const list = live
     .filter((p) => !needle || `${p.name} ${p.billName ?? ''} ${p.size} ${p.category}`.toLowerCase().includes(needle))
     .sort((a, b) => (a.category + a.name + a.size).localeCompare(b.category + b.name + b.size));
-  const value = st.products.filter((p) => p.active).reduce((a, p) => a + (stock[p.id] ?? 0) * p.mrpPaise, 0);
-  const bottles = st.products.filter((p) => p.active).reduce((a, p) => a + (stock[p.id] ?? 0), 0);
-  const lowCount = st.products.filter((p) => p.active && p.lowStock > 0 && (stock[p.id] ?? 0) <= p.lowStock).length;
+  const value = live.filter((p) => p.active).reduce((a, p) => a + (stock[p.id] ?? 0) * p.mrpPaise, 0);
+  const bottles = live.filter((p) => p.active).reduce((a, p) => a + (stock[p.id] ?? 0), 0);
+  const lowCount = live.filter((p) => p.active && p.lowStock > 0 && (stock[p.id] ?? 0) <= p.lowStock).length;
 
   const save = (input: WineProduct) => {
     let p = input;
@@ -67,18 +101,23 @@ export default function WineStock() {
           </h1>
           <p className="text-sm text-ink-2">{st.shopName}</p>
         </div>
-        <button className="btn-primary" onClick={() => setEditing(blank())}>
-          <Plus className="h-4 w-4" /> {t('addBrand')}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button className="btn-ghost" onClick={() => setEditing(blank())}>
+            <Plus className="h-4 w-4" /> {t('addBrand')}
+          </button>
+          <button className="btn-primary" disabled={!live.length} onClick={() => setInvoice(newInvoiceTarget(date))}>
+            <PackagePlus className="h-4 w-4" /> {t('receiveStock')}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
-        <Stat label={t('currentStock')} value={`${bottles} ${t('bottles')}`} accent="bg-premium" sub={`${t('brand')}: ${st.products.filter((p) => p.active).length}`} />
+        <Stat label={t('currentStock')} value={`${bottles} ${t('bottles')}`} accent="bg-premium" sub={`${t('brand')}: ${live.filter((p) => p.active).length}`} />
         <Stat label={t('stockValue')} value={rupee(value)} accent="bg-ok" />
         <Stat label={t('lowStockWarn')} value={String(lowCount)} accent={lowCount ? 'bg-warn' : 'bg-ok'} />
       </div>
 
-      {st.products.length === 0 ? (
+      {live.length === 0 ? (
         <Empty icon={<Wine className="h-6 w-6" />} title={t('addBrand')}>
           {t('noBrands')}
         </Empty>
@@ -120,9 +159,14 @@ export default function WineStock() {
                         {low && <span className="chip ml-1.5 bg-warn-soft px-1.5 py-0 text-[10px] text-warn">{t('lowStockWarn')}</span>}
                       </td>
                       <td className="px-4 py-2.5 text-right sm:px-5">
-                        <button className="btn-quiet px-2" onClick={() => setEditing(p)} aria-label={t('edit')}>
-                          <Pencil className="h-4 w-4" />
-                        </button>
+                        <span className="inline-flex gap-0.5">
+                          <button className="btn-quiet px-2" onClick={() => setEditing(p)} aria-label={`${t('edit')} ${p.name} ${p.size}`} title={t('edit')}>
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button className="btn-quiet px-2 hover:text-bad" onClick={() => removeBrand(p)} aria-label={`${t('delete')} ${p.name} ${p.size}`} title={t('delete')}>
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </span>
                       </td>
                     </tr>
                   );
@@ -138,20 +182,70 @@ export default function WineStock() {
           product={editing}
           onClose={() => setEditing(null)}
           onSave={save}
-          onDelete={
-            editing.id && !used(editing.id)
-              ? () => {
-                  update((d) => {
-                    const ws = structuredClone(wineSettings(d));
-                    ws.products = ws.products.filter((x) => x.id !== editing.id);
-                    d.settings.wine = ws;
-                  });
-                  setEditing(null);
-                }
-              : undefined
-          }
+          onDelete={editing.id ? () => removeBrand(editing) : undefined}
         />
       )}
+
+      {/* Stock invoices – every delivery, newest first */}
+      <Card className="overflow-hidden">
+        <div className="flex items-center justify-between border-b border-line px-4 py-3 sm:px-5">
+          <span className="flex items-center gap-2 font-display font-bold">
+            <PackagePlus className="h-5 w-5 text-premium" /> {t('stockInvoices')}
+          </span>
+          <span className="text-xs text-ink-3">{invoices.length}</span>
+        </div>
+        {invoices.length === 0 ? (
+          <p className="px-5 py-6 text-center text-sm text-ink-3">{t('noInvoices')}</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[620px] text-sm">
+              <thead className="bg-sunk text-[11px] uppercase tracking-wider text-ink-3">
+                <tr>
+                  <th className="px-4 py-2 text-left sm:px-5">{t('date')}</th>
+                  <th className="px-2 py-2 text-left">{t('invoiceNo')}</th>
+                  <th className="px-2 py-2 text-left">{t('supplier')}</th>
+                  <th className="px-2 py-2 text-right">{t('bottles')}</th>
+                  <th className="px-2 py-2 text-right">{t('amount')}</th>
+                  <th className="px-4 py-2 sm:px-5" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {invoices.map(({ date: d, invoice: inv }) => (
+                  <tr key={inv.id} className="hover:bg-sunk/60">
+                    <td className="whitespace-nowrap px-4 py-2.5 sm:px-5">{dateLabel(d, lang, 'short')}</td>
+                    <td className="px-2 py-2.5 font-semibold">{inv.number || '—'}</td>
+                    <td className="px-2 py-2.5 text-ink-2">
+                      {inv.supplier || '—'}
+                      <div className="truncate text-[11px] text-ink-3">
+                        {inv.lines
+                          .map((l) => {
+                            const p = st.products.find((x) => x.id === l.productId);
+                            return p ? `${p.name} ${p.size} ×${l.qty}` : `×${l.qty}`;
+                          })
+                          .join(', ')}
+                      </div>
+                    </td>
+                    <td className="num px-2 py-2.5 text-right font-semibold">+{inv.lines.reduce((a, l) => a + l.qty, 0)}</td>
+                    <td className="num px-2 py-2.5 text-right">{rupee(invoiceTotal(inv))}</td>
+                    <td className="px-4 py-2.5 text-right sm:px-5">
+                      <span className="inline-flex gap-0.5">
+                        <button className="btn-quiet px-2" onClick={() => setInvoice({ date: d, invoice: inv, originalDate: d })} aria-label={`${t('edit')} ${inv.number}`}>
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button className="btn-quiet px-2 hover:text-bad" onClick={() => removeInvoice(d, inv.id)} aria-label={`${t('delete')} ${inv.number}`}>
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {invoice && <WineInvoiceModal target={invoice} onClose={() => setInvoice(null)} />}
     </div>
   );
 }

@@ -38,7 +38,7 @@ export default function WineReports() {
   }, [data, from, to]);
 
   const tot = useMemo(() => {
-    const k = ['bottlesSold', 'salePaise', 'onlinePaise', 'cardPaise', 'duePaise', 'expensesPaise', 'expectedCashPaise', 'profitPaise'] as const;
+    const k = ['bottlesSold', 'salePaise', 'cashSalePaise', 'onlinePaise', 'cardPaise', 'duePaise', 'expensesPaise', 'expectedCashPaise', 'profitPaise'] as const;
     const out = Object.fromEntries(k.map((x) => [x, 0])) as Record<(typeof k)[number], number>;
     for (const r of rows) for (const x of k) out[x] += r[x];
     return out;
@@ -63,11 +63,11 @@ export default function WineReports() {
     downloadFile(
       `wine_daily_${from}_${to}.csv`,
       csvOf([
-        ['Date', 'Bottles Sold', 'Sale', 'UPI', 'Card', 'Due', 'Expenses', 'Cash Should Be', 'Cash Counted', 'Short/Excess', 'Gross Profit'],
+        ['Date', 'Bottles Sold', 'Sale', 'Cash Sale', 'UPI', 'Card', 'Due', 'Expenses', 'Cash Should Be', 'Cash Counted', 'Short/Excess', 'Gross Profit'],
         ...rows.map((r) => [
           r.day.date,
           r.bottlesSold,
-          ...[r.salePaise, r.onlinePaise, r.cardPaise, r.duePaise, r.expensesPaise, r.expectedCashPaise, r.cashCountedPaise, r.cashCountedPaise ? r.cashDiffPaise : 0, r.profitPaise].map((v) => (v / 100).toFixed(2)),
+          ...[r.salePaise, r.cashSalePaise, r.onlinePaise, r.cardPaise, r.duePaise, r.expensesPaise, r.expectedCashPaise, r.cashCountedPaise, r.cashCountedPaise ? r.cashDiffPaise : 0, r.profitPaise].map((v) => (v / 100).toFixed(2)),
         ]),
       ]),
       'text/csv'
@@ -126,19 +126,20 @@ export default function WineReports() {
         <>
           <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
             <Stat label={t('totalSale')} value={rupee(tot.salePaise)} accent="bg-premium" sub={`${tot.bottlesSold} ${t('bottles')}`} />
-            <Stat label={t('cashShouldBe')} value={rupee(tot.expectedCashPaise)} accent="bg-ok" sub={`${t('upiSlips')} ${rupee(tot.onlinePaise)}`} />
+            <Stat label={t('cashSale')} value={rupee(tot.cashSalePaise)} accent="bg-ok" sub={`${t('upiSlips')} ${rupee(tot.onlinePaise)} · ${t('card')} ${rupee(tot.cardPaise)}`} />
             <Stat label={t('dueGiven')} value={rupee(tot.duePaise)} accent="bg-warn" sub={`${t('shopExpenses')} ${rupee(tot.expensesPaise)}`} />
             <Stat label={t('grossProfit')} value={rupee(tot.profitPaise)} accent="bg-ok" />
           </div>
 
           <Card className="overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[820px] text-sm">
+              <table className="w-full min-w-[900px] text-sm">
                 <thead className="bg-sunk text-[11px] uppercase tracking-wider text-ink-3">
                   <tr>
                     <th className="px-4 py-2.5 text-left">{t('date')}</th>
                     <th className="px-2 py-2.5 text-right">{t('sold')}</th>
                     <th className="px-2 py-2.5 text-right">{t('sale')}</th>
+                    <th className="px-2 py-2.5 text-right">{t('cashSale')}</th>
                     <th className="px-2 py-2.5 text-right">{t('upiSlips')}</th>
                     <th className="px-2 py-2.5 text-right">{t('card')}</th>
                     <th className="px-2 py-2.5 text-right">{t('due')}</th>
@@ -155,7 +156,7 @@ export default function WineReports() {
                         {r.day.locked && <span className="ml-1 text-xs">🔒</span>}
                       </td>
                       <td className="num px-2 py-2.5 text-right">{r.bottlesSold}</td>
-                      {[r.salePaise, r.onlinePaise, r.cardPaise, r.duePaise, r.expensesPaise, r.expectedCashPaise].map((v, i) => (
+                      {[r.salePaise, r.cashSalePaise, r.onlinePaise, r.cardPaise, r.duePaise, r.expensesPaise, r.expectedCashPaise].map((v, i) => (
                         <td key={i} className="num px-2 py-2.5 text-right">
                           {rupee(v)}
                         </td>
@@ -168,7 +169,7 @@ export default function WineReports() {
                   <tr>
                     <td className="px-4 py-3">{t('total')}</td>
                     <td className="num px-2 py-3 text-right">{tot.bottlesSold}</td>
-                    {[tot.salePaise, tot.onlinePaise, tot.cardPaise, tot.duePaise, tot.expensesPaise, tot.expectedCashPaise].map((v, i) => (
+                    {[tot.salePaise, tot.cashSalePaise, tot.onlinePaise, tot.cardPaise, tot.duePaise, tot.expensesPaise, tot.expectedCashPaise].map((v, i) => (
                       <td key={i} className="num px-2 py-3 text-right">
                         {rupee(v)}
                       </td>
