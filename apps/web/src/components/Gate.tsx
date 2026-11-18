@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { CloudOff, CloudUpload, Cloud, HardDrive, KeyRound, Loader2, ServerCrash, TriangleAlert } from 'lucide-react';
+import { CloudOff, CloudUpload, Cloud, HardDrive, KeyRound, Loader2, ServerCrash, ShieldCheck, TriangleAlert, UserRound } from 'lucide-react';
+import { StaffLogin } from '../pages/Punch';
 import { useStore, type SyncStatus } from '../lib/store';
 import { ApiError } from '../lib/api';
 import { cn } from '../lib/util';
@@ -45,6 +46,7 @@ export function SetupNeeded({ missing }: { missing: string[] }) {
 
 export function Login() {
   const { t, login, data } = useStore();
+  const [tab, setTab] = useState<'admin' | 'staff'>('admin');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -63,40 +65,64 @@ export function Login() {
   };
   return (
     <Centered>
-      <form onSubmit={submit} className="card rise w-full max-w-sm overflow-hidden">
-        <div className="bg-surface p-6 sm:p-8">
+      <div className="card rise w-full max-w-sm overflow-hidden">
+        <div className="bg-surface px-6 pt-6 sm:px-8 sm:pt-8">
           <BrandMark className="h-12 w-12" />
-          <h1 className="mt-5 font-display text-2xl font-extrabold tracking-tight">{t('loginTitle')}</h1>
-          <p className="mt-1.5 text-sm text-ink-2">{t('loginBody')}</p>
-          <label className="mt-6 block">
-            <span className="label">{t('password')}</span>
-            <div className="relative">
-              <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" />
-              <input
-                type="password"
-                autoFocus
-                autoComplete="current-password"
-                className={cn('input pl-9', error && 'border-bad')}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
-          </label>
-          {error && (
-            <p className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-bad">
-              <TriangleAlert className="h-4 w-4" /> {error}
-            </p>
-          )}
-          <button className="btn-primary mt-5 w-full" disabled={!password || busy}>
-            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-            {busy ? t('signingIn') : t('signIn')}
-          </button>
+          <h1 className="mt-5 font-display text-2xl font-extrabold tracking-tight">{data.settings.stationName || t('loginTitle')}</h1>
+          <p className="mt-1 text-sm text-ink-3">{data.settings.language === 'bn' ? 'দৈনিক মিটার ও কালেকশন খাতা' : 'Daily meter & collection ledger'}</p>
+          {/* Who is logging in */}
+          <div className="mt-5 grid grid-cols-2 gap-1 rounded-xl border border-line bg-sunk p-1" role="tablist">
+            {(
+              [
+                ['admin', t('adminTab'), ShieldCheck],
+                ['staff', t('staffTab'), UserRound],
+              ] as const
+            ).map(([k, label, Icon]) => (
+              <button
+                key={k}
+                role="tab"
+                aria-selected={tab === k}
+                onClick={() => setTab(k)}
+                className={cn('flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-bold transition', tab === k ? 'bg-surface text-ink shadow-card' : 'text-ink-2 hover:text-ink')}
+              >
+                <Icon className="h-4 w-4" /> {label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-ink-3">{tab === 'admin' ? t('adminLoginHint') : t('staffLoginHint')}</p>
         </div>
-        <a href="#/punch" className="block border-t border-line px-6 py-3 text-center text-sm font-semibold text-brand hover:bg-sunk">
-          {t('punchTitle')} →
-        </a>
-        <div className="border-t border-line bg-sunk px-6 py-3 text-center text-xs text-ink-3">{data.settings.language === 'bn' ? 'দৈনিক মিটার ও কালেকশন খাতা' : 'Daily meter & collection ledger'}</div>
-      </form>
+        <div className="bg-surface px-6 pb-6 pt-4 sm:px-8 sm:pb-8">
+          {tab === 'admin' ? (
+            <form onSubmit={submit}>
+              <label className="block">
+                <span className="label">{t('password')}</span>
+                <div className="relative">
+                  <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-3" />
+                  <input
+                    type="password"
+                    autoFocus
+                    autoComplete="current-password"
+                    className={cn('input pl-9', error && 'border-bad')}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </div>
+              </label>
+              {error && (
+                <p className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-bad">
+                  <TriangleAlert className="h-4 w-4" /> {error}
+                </p>
+              )}
+              <button className="btn-primary mt-5 w-full" disabled={!password || busy}>
+                {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+                {busy ? t('signingIn') : t('signIn')}
+              </button>
+            </form>
+          ) : (
+            <StaffLogin bare onDone={() => (window.location.hash = '#/punch')} />
+          )}
+        </div>
+      </div>
     </Centered>
   );
 }

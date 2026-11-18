@@ -72,7 +72,9 @@ export function sampleData(current?: AppData): AppData {
   settings.staff = [
     { id: 'st-ramesh', name: 'Ramesh', phone: '', active: true },
     { id: 'st-suresh', name: 'Suresh', phone: '', active: true },
-    { id: 'st-bikash', name: 'Bikash', phone: '', active: true },
+    { id: 'st-bikash', name: 'Bikash', phone: '', active: true, businesses: ['petrol', 'wine'] },
+    { id: 'st-rafiq', name: 'Rafiq', phone: '', active: true, businesses: ['lpg'] },
+    { id: 'st-priya', name: 'Priya', phone: '', active: true, businesses: ['wine'] },
   ];
   settings.machines = [
     machine('m219', '219', ['2127209.495', '1566447.455', '209343.220', '440779.120']),

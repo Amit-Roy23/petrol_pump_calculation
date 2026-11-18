@@ -161,7 +161,7 @@ describe('staff attendance', () => {
   it('staff log in with mobile + PIN; wrong PIN, inactive or no-PIN staff are refused', async () => {
     const ok = await staffLogin();
     expect(ok.status).toBe(200);
-    expect(ok.body.staff).toEqual({ id: 'st1', name: 'Ramesh' });
+    expect(ok.body.staff).toEqual({ id: 'st1', name: 'Ramesh', businesses: ['petrol'] });
     expect((await staffLogin('9876543210', '0000')).status).toBe(401);
     expect((await staffLogin('9000000000', '1111')).status).toBe(401);
     expect((await staffLogin('9111111111', '1234')).status).toBe(401);
@@ -221,7 +221,26 @@ describe('staff attendance', () => {
     expect((await call(att, { url: '/api/attendance?action=status', token })).status).toBe(401);
   });
 
-  it('measures distance correctly', () => {
+  it('records which part the punch is for, and only parts the staff works in', async () => {
+    const st = (await store.settings()) as any;
+    st.staff[0].businesses = ['petrol', 'wine'];
+    st.wine = { shopName: 'Demo Wine', products: [] };
+    await store.apply({ settings: st });
+    const login = await staffLogin();
+    expect(login.body.staff.businesses).toEqual(['petrol', 'wine']);
+    const { token } = login.body;
+    expect((await punch(token, 'in', { business: 'lpg' })).status).toBe(403);
+    const ok = await punch(token, 'in', { business: 'wine' });
+    expect(ok.body.punch.business).toBe('wine');
+    const status = await call(att, { url: '/api/attendance?action=status', token });
+    expect(status.body.businessNames.wine).toBe('Demo Wine');
+    // Older staff with no parts set default to petrol.
+    st.staff[0].businesses = undefined;
+    await store.apply({ settings: st });
+    expect((await call(att, { url: '/api/attendance?action=status', token })).body.staff.businesses).toEqual(['petrol']);
+  });
+
+    it('measures distance correctly', () => {
     expect(distanceM({ lat: 22.5726, lng: 88.3639 }, { lat: 22.5726, lng: 88.3739 })).toBeGreaterThan(1000);
     expect(distanceM({ lat: 22.5726, lng: 88.3639 }, { lat: 22.5726, lng: 88.3639 })).toBe(0);
   });

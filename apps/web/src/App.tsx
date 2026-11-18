@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { HashRouter, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { BarChart3, Flame, Fuel, Gauge, HandCoins, Home, Package, Settings as SettingsIcon, ShoppingCart, Users, Wallet, Wine } from 'lucide-react';
+import { BarChart3, Flame, Fuel, Gauge, HandCoins, Home, Fingerprint, Package, Settings as SettingsIcon, ShoppingCart, Users, Wallet, Wine } from 'lucide-react';
 import { useStore } from './lib/store';
 import { cn } from './lib/util';
 import type { TKey } from './lib/i18n';
@@ -13,6 +13,8 @@ import Dues from './pages/Dues';
 import SettingsPage from './pages/Settings';
 import Staff from './pages/Staff';
 import Punch from './pages/Punch';
+import Team from './pages/Team';
+import { staffSession } from './lib/attendance';
 import LpgSheet from './pages/LpgSheet';
 import LpgReports from './pages/LpgReports';
 import { lpgSettings } from './lib/lpg';
@@ -91,7 +93,7 @@ function useBusinessFromRoute() {
   const { business, setBusiness } = useStore();
   const { pathname } = useLocation();
   useEffect(() => {
-    if (pathname === '/settings') return;
+    if (pathname === '/settings' || pathname === '/team') return;
     const b = businessOfPath(pathname);
     if (b !== business) setBusiness(b);
   }, [pathname, business, setBusiness]);
@@ -138,7 +140,8 @@ function Shell() {
   if (pathname === '/punch') return <Punch />;
   if (cloud.mode === 'checking') return <Splash />;
   if (cloud.mode === 'cloud' && cloud.missing.length) return <SetupNeeded missing={cloud.missing} />;
-  if (cloud.mode === 'cloud' && cloud.needLogin) return <Login />;
+  // A staff member logged in on this phone goes straight to their punch screen.
+  if (cloud.mode === 'cloud' && cloud.needLogin) return staffSession.get() ? <Punch /> : <Login />;
   if (cloud.mode === 'cloud' && !cloud.loaded) {
     return cloud.status === 'error' || cloud.status === 'offline' ? (
       <SetupNeeded missing={[cloud.error ?? t('cantReach')]} />
@@ -161,7 +164,7 @@ function Shell() {
         </div>
         <BusinessToggle className="mt-6" />
         <nav className="mt-4 flex flex-col gap-1">
-          {[...nav, { to: '/settings', key: 'navSettings' as TKey, icon: SettingsIcon }].map(({ to, key, icon: Icon }) => (
+          {[...nav, { to: '/team', key: 'teamTitle' as TKey, icon: Fingerprint }, { to: '/settings', key: 'navSettings' as TKey, icon: SettingsIcon }].map(({ to, key, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
@@ -194,6 +197,9 @@ function Shell() {
           <BusinessToggle compact className="shrink-0" />
           <div className="flex items-center gap-1">
           <SyncBadge compact />
+          <NavLink to="/team" className={({ isActive }) => cn('btn-quiet px-2', isActive && 'bg-sunk text-ink')} aria-label={t('teamTitle')} title={t('teamTitle')}>
+            <Fingerprint className="h-5 w-5" />
+          </NavLink>
           <NavLink to="/settings" className={({ isActive }) => cn('btn-quiet', isActive && 'bg-sunk text-ink')} aria-label={t('navSettings')}>
             <SettingsIcon className="h-5 w-5" />
           </NavLink>
@@ -214,6 +220,7 @@ function Shell() {
             <Route path="/wine/sell" element={<WineSell />} />
             <Route path="/wine/stock" element={<WineStock />} />
             <Route path="/wine/reports" element={<WineReports />} />
+            <Route path="/team" element={<Team />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Dashboard />} />
           </Routes>

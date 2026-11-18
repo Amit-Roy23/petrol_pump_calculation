@@ -21,6 +21,7 @@ import { parseAmountExpr, splitAmounts } from '../src/lib/util';
 import { computeLpgDay, createLpgDay, lpgOpeningStock, sampleLpg } from '../src/lib/lpg';
 import { buildDueMessage, normalizePhone, waLink } from '../src/lib/whatsapp';
 import { fmtMinutes, hashPin as hashPinWeb, toSessions } from '../src/lib/attendance';
+import { staffFor, validateStaff } from '../src/lib/staff';
 import { computeWineDay, createWineDay, productUsed, sampleWine, wineCategoryOptions, wineOpeningStock } from '../src/lib/wine';
 
 describe('notebook page 19/06/2026', () => {
@@ -592,5 +593,28 @@ describe('staff attendance (app side)', () => {
     expect(fmtMinutes(a1.minutes!)).toBe('8h 45m');
     expect(s.find((x) => x.in?.id === '3')!.missingOut).toBe(true);
     expect(s.find((x) => x.in?.id === '4')!.open).toBe(true);
+  });
+});
+
+describe('staff for petrol / LPG / wine', () => {
+  it('older staff count as petrol; staff can be in several parts', () => {
+    const data = sampleData();
+    expect(staffFor(data, 'petrol').map((s) => s.name)).toEqual(['Ramesh', 'Suresh', 'Bikash']);
+    expect(staffFor(data, 'lpg').map((s) => s.name)).toEqual(['Rafiq']);
+    expect(staffFor(data, 'wine').map((s) => s.name)).toEqual(['Bikash', 'Priya']);
+  });
+
+  it('validates name, parts, PIN and unique mobile numbers', () => {
+    const data = sampleData();
+    const all = data.settings.staff!;
+    const base = { id: '', name: 'New', phone: '', active: true, businesses: ['wine'] as ('petrol' | 'lpg' | 'wine')[] };
+    expect(validateStaff(all, base, '')).toBeNull();
+    expect(validateStaff(all, { ...base, name: 'ramesh' }, '')).toBe('alreadyExists');
+    expect(validateStaff(all, { ...base, businesses: [] }, '')).toBe('partsRequired');
+    expect(validateStaff(all, base, '12')).toBe('pinInvalid');
+    expect(validateStaff(all, base, '1234')).toBe('phoneNeededForPin');
+    all[0].phone = '98765 43210';
+    expect(validateStaff(all, { ...base, phone: '+91 98765-43210' }, '1234')).toBe('duplicatePhone');
+    expect(validateStaff(all, { ...base, phone: '91234 56789' }, '1234')).toBeNull();
   });
 });

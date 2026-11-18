@@ -46,6 +46,8 @@ export interface Staff {
   active: boolean;
   /** sha256 of the punch-in PIN (see hashPin); absent = can't log in. */
   pinHash?: string;
+  /** Parts of the business this person works in (absent = petrol only). */
+  businesses?: Business[];
 }
 
 /** Pump location for checking punches are made at the pump. */

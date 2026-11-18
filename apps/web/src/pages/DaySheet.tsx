@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, ArrowRight, Banknote, CreditCard, QrCode, Receipt, Wallet, Lock, Plus, Printer, Smartphone, Trash2, Unlock, UserRound } from 'lucide-react';
 import { useStore } from '../lib/store';
+import { staffFor } from '../lib/staff';
 import {
   addShift,
   computeDay,
@@ -227,7 +228,7 @@ function MachineSheetView({ calc, locked }: { calc: SheetCalc; locked: boolean }
       draft.settings.staff = draft.settings.staff ?? [];
       let st = draft.settings.staff.find((x) => x.name.trim().toLowerCase() === clean.toLowerCase());
       if (!st) {
-        st = { id: uid(), name: clean, phone: '', active: true };
+        st = { id: uid(), name: clean, phone: '', active: true, businesses: ['petrol'] };
         draft.settings.staff.push(st);
       }
       sh.staffId = st.id;
@@ -582,7 +583,7 @@ function WorkerInput({ value, disabled, onCommit }: { value: string; disabled: b
   const { data, t } = useStore();
   const [text, setText] = useState(value);
   useEffect(() => setText(value), [value]);
-  const staff = staffList(data.settings).filter((x) => x.active);
+  const staff = staffFor(data, 'petrol');
   const commit = () => {
     if (text.trim() !== value.trim()) onCommit(text);
   };

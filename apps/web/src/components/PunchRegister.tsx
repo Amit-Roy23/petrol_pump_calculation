@@ -4,6 +4,8 @@ import { useStore } from '../lib/store';
 import { AttendanceError, attendanceApi, fmtDistance, fmtMinutes, mapLink, toSessions, type Punch, type Session } from '../lib/attendance';
 import { staffList } from '../lib/compute';
 import { cn, downloadFile, shiftDate, todayISO } from '../lib/util';
+import { BUSINESS_LIST, BUSINESS_META } from '../lib/staff';
+import type { Business } from '../lib/types';
 import { Card, Field, Modal, Segmented } from './ui';
 
 type Preset = 'today' | '7' | 'month' | 'custom';
@@ -45,6 +47,7 @@ export function PunchRegister() {
   const [from, setFrom] = useState(date);
   const [to, setTo] = useState(date);
   const [staffId, setStaffId] = useState('');
+  const [part, setPart] = useState<Business | ''>('');
   const [punches, setPunches] = useState<Punch[] | null>(null);
   const [openHours, setOpenHours] = useState(16);
   const [error, setError] = useState('');
@@ -77,7 +80,7 @@ export function PunchRegister() {
     else if (p === 'month') (setFrom(today.slice(0, 8) + '01'), setTo(today));
   };
 
-  const sessions = useMemo(() => toSessions((punches ?? []).filter((p) => !staffId || p.staffId === staffId), openHours), [punches, staffId, openHours]);
+  const sessions = useMemo(() => toSessions((punches ?? []).filter((p) => (!staffId || p.staffId === staffId) && (!part || (p.business ?? 'petrol') === part)), openHours), [punches, staffId, part, openHours]);
   const totals = useMemo(() => {
     const m = new Map<string, { name: string; minutes: number; days: Set<string>; missing: number }>();
     for (const s of sessions) {
@@ -95,12 +98,13 @@ export function PunchRegister() {
   const link = `${location.origin}${location.pathname}#/punch`;
 
   const exportCsv = () => {
-    const rows = [['Staff', 'Date', 'In', 'In location', 'In at pump', 'Out', 'Out location', 'Out at pump', 'Hours']];
+    const rows = [['Staff', 'Part', 'Date', 'In', 'In location', 'In at pump', 'Out', 'Out location', 'Out at pump', 'Hours']];
     for (const s of [...sessions].reverse()) {
       const loc = (p: Punch | null) => (p ? `${p.lat},${p.lng}` : '');
       const atPump = (p: Punch | null) => (p ? (p.inside === null ? '' : p.inside ? 'yes' : `no (${p.distanceM} m)`) : '');
       rows.push([
         s.staffName,
+        (s.in ?? s.out)!.business ?? 'petrol',
         (s.in ?? s.out)!.at.slice(0, 10),
         s.in ? time(s.in.at) : '',
         loc(s.in),
@@ -187,6 +191,16 @@ export function PunchRegister() {
               <Field label={t('to')}>
                 <input type="date" className="input py-1.5" value={to} onChange={(e) => e.target.value && (setTo(e.target.value), setPreset('custom'))} />
               </Field>
+              <Field label={t('workingAt')}>
+                <select className="input py-1.5" value={part} onChange={(e) => setPart(e.target.value as Business | '')}>
+                  <option value="">{t('allParts')}</option>
+                  {BUSINESS_LIST.map((b) => (
+                    <option key={b} value={b}>
+                      {t(BUSINESS_META[b].key)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
               <Field label={t('worker')}>
                 <select className="input py-1.5" value={staffId} onChange={(e) => setStaffId(e.target.value)}>
                   <option value="">{t('allStaff')}</option>
@@ -231,6 +245,10 @@ export function PunchRegister() {
                         <td className="px-4 py-2 font-semibold sm:px-5">
                           <UserRound className="mr-1 inline h-3.5 w-3.5 text-ink-3" />
                           {s.staffName}
+                          {(() => {
+                            const b = ((s.in ?? s.out)!.business ?? 'petrol') as Business;
+                            return <span className={cn('chip ml-1.5 px-2 py-0.5 text-[10px]', BUSINESS_META[b].chip)}>{t(BUSINESS_META[b].key)}</span>;
+                          })()}
                         </td>
                         <td className="whitespace-nowrap px-2 py-2 text-ink-2">{day((s.in ?? s.out)!.at)}</td>
                         <td className="px-2 py-2">
