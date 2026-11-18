@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, CreditCard, Lock, Printer, Receipt, Search, Smartphone, Unlock, UserRound, Wallet, Wine } from 'lucide-react';
+import { AlertTriangle, Banknote, CreditCard, Lock, PackagePlus, Printer, Receipt, Search, Smartphone, Unlock, UserRound, Wallet, Wine } from 'lucide-react';
+import { WineInvoiceModal, newInvoiceTarget, type InvoiceTarget } from '../components/WineInvoiceModal';
 import { useStore } from '../lib/store';
 import { computeWineDay, wineSettings, type WineDayCalc, type WineRowCalc } from '../lib/wine';
 import type { WineDay, WineRow } from '../lib/types';
@@ -18,6 +19,7 @@ export default function WineSheet() {
   const locked = day.locked;
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
+  const [invoice, setInvoice] = useState<InvoiceTarget | null>(null);
 
   const edit = (fn: (d: WineDay) => void) => updateWineDay(date, (d) => fn(d));
   const setRow = (r: WineRowCalc, patch: Partial<WineRow>) =>
@@ -37,7 +39,7 @@ export default function WineSheet() {
   const categories = [...new Set(calc.rows.map((r) => r.product.category || 'Other'))];
   const needle = q.trim().toLowerCase();
   const visible = calc.rows.filter(
-    (r) => (!cat || (r.product.category || 'Other') === cat) && (!needle || `${r.product.name} ${r.product.size} ${r.product.category}`.toLowerCase().includes(needle))
+    (r) => (!cat || (r.product.category || 'Other') === cat) && (!needle || `${r.product.name} ${r.product.billName ?? ''} ${r.product.size} ${r.product.category}`.toLowerCase().includes(needle))
   );
   const groups = categories.map((c) => ({ c, rows: visible.filter((r) => (r.product.category || 'Other') === c) })).filter((g) => g.rows.length);
 
@@ -65,6 +67,10 @@ export default function WineSheet() {
         </div>
         <div className="no-print flex items-center gap-2">
           <DateNav />
+          <button className="btn-ghost px-3" disabled={locked} onClick={() => setInvoice(newInvoiceTarget(date))} title={t('receiveStock')}>
+            <PackagePlus className="h-4 w-4" />
+            <span className="hidden sm:inline">{t('receiveStockShort')}</span>
+          </button>
           <button className="btn-ghost px-3" onClick={() => window.print()} aria-label={t('print')}>
             <Printer className="h-4 w-4" />
           </button>
@@ -80,6 +86,8 @@ export default function WineSheet() {
           <Lock className="h-4 w-4" /> {t('dayLocked')}
         </div>
       )}
+
+      <DayEndStrip calc={calc} />
 
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.8fr)_minmax(300px,1fr)]">
         {/* Stock register */}
@@ -144,6 +152,10 @@ export default function WineSheet() {
         </div>
       </div>
 
+      <SoldToday calc={calc} />
+
+      {invoice && <WineInvoiceModal target={invoice} onClose={() => setInvoice(null)} />}
+
       <input className="input text-sm" placeholder={t('remark')} value={day.remark} disabled={locked} onChange={(e) => edit((d) => (d.remark = e.target.value))} />
     </div>
   );
@@ -172,8 +184,12 @@ function BrandRow({ r, locked, onChange }: { r: WineRowCalc; locked: boolean; on
       <div className="grid grid-cols-3 items-end gap-2 md:grid-cols-[minmax(0,1fr)_52px_64px_60px_84px_48px_100px] md:items-center">
         <div className="col-span-3 flex items-baseline justify-between gap-2 md:col-span-1 md:block">
           <div className="min-w-0">
-            <span className="font-semibold">{r.product.name}</span> <span className="text-sm text-ink-2">{r.product.size}</span>
+            <span className="font-semibold" title={r.product.billName || undefined}>
+              {r.product.name}
+            </span>{' '}
+            <span className="text-sm text-ink-2">{r.product.size}</span>
             {r.low && !r.error && <span className="chip ml-1.5 bg-warn-soft px-1.5 py-0 text-[10px] text-warn">{t('lowStockWarn')}</span>}
+            {r.product.billName && r.product.billName !== r.product.name && <div className="truncate text-[11px] text-ink-3">{r.product.billName}</div>}
           </div>
           <div className="num shrink-0 text-xs text-ink-3">
             {rupee(r.row.mrpPaise)}
@@ -186,6 +202,11 @@ function BrandRow({ r, locked, onChange }: { r: WineRowCalc; locked: boolean; on
         <label className="block">
           <span className="label md:hidden">{t('receivedStock')}</span>
           {small(r.row.received, 'received', t('receivedStock'))}
+          {r.invoiceQty > 0 && (
+            <span className="num mt-0.5 block text-center text-[10px] font-bold text-premium" title={t('stockInvoices')}>
+              +{r.invoiceQty} {t('fromInvoice')}
+            </span>
+          )}
         </label>
         <label className="block">
           <span className="label md:hidden">{t('breakage')}</span>
@@ -310,6 +331,117 @@ function MoneyCard({ calc, locked, edit }: { calc: WineDayCalc; locked: boolean;
           <span className="num font-bold text-ok">{rupee(calc.profitPaise)}</span>
         </div>
       )}
+    </Card>
+  );
+}
+
+/** Day-end view: how much sold, and how the money came in. */
+function DayEndStrip({ calc }: { calc: WineDayCalc }) {
+  const { t } = useStore();
+  const share = (v: number) => (calc.salePaise > 0 ? Math.round((v / calc.salePaise) * 100) : 0);
+  const tiles: { label: string; value: string; sub?: string; icon: React.ReactNode; tone: string }[] = [
+    { label: t('cashSale'), value: rupee(calc.cashSalePaise), sub: `${share(calc.cashSalePaise)}%`, icon: <Banknote className="h-4 w-4" />, tone: 'bg-ok-soft text-ok' },
+    { label: t('online'), value: rupee(calc.onlinePaise), sub: `${share(calc.onlinePaise)}%`, icon: <Smartphone className="h-4 w-4" />, tone: 'bg-cng-soft text-cng' },
+    { label: t('card'), value: rupee(calc.cardPaise), sub: `${share(calc.cardPaise)}%`, icon: <CreditCard className="h-4 w-4" />, tone: 'bg-premium-soft text-premium' },
+    { label: t('due'), value: rupee(calc.duePaise), sub: `${share(calc.duePaise)}%`, icon: <UserRound className="h-4 w-4" />, tone: 'bg-warn-soft text-warn' },
+  ];
+  return (
+    <Card className="overflow-hidden">
+      <div className="grid gap-4 p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] lg:items-center">
+        <div>
+          <div className="label">{t('daySummaryWine')}</div>
+          <Lcd value={rupee(calc.salePaise)} size="lg" ghost={calc.salePaise === 0} className="w-full justify-start sm:w-auto" />
+          <div className="mt-2 text-sm text-ink-2">
+            <b className="num text-ink">{calc.bottlesSold}</b> {t('bottles')} {t('sold').toLowerCase()}
+            {calc.invoiceCount > 0 && (
+              <span className="ml-3 text-premium">
+                +{calc.invoiceBottles} {t('bottles')} · {calc.invoiceCount} {t('invoicesToday')}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {tiles.map((x) => (
+            <div key={x.label} className="rounded-xl border border-line bg-sunk/50 p-3">
+              <div className="flex items-center justify-between">
+                <span className={cn('grid h-7 w-7 place-items-center rounded-lg', x.tone)}>{x.icon}</span>
+                <span className="num text-[11px] text-ink-3">{x.sub}</span>
+              </div>
+              <div className="mt-2 text-[11px] font-semibold uppercase tracking-wider text-ink-3">{x.label}</div>
+              <div className="num text-base font-bold sm:text-lg">{x.value}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+/** Brands sold today with bottles and amount, best sellers first. */
+function SoldToday({ calc }: { calc: WineDayCalc }) {
+  const { t } = useStore();
+  const sold = calc.rows.filter((r) => r.sold > 0).sort((a, b) => b.amountPaise - a.amountPaise);
+  return (
+    <Card className="overflow-hidden">
+      <div className="flex items-center justify-between border-b border-line px-4 py-3 sm:px-5">
+        <span className="font-display font-bold">{t('soldToday')}</span>
+        <span className="num text-sm text-ink-2">
+          {calc.bottlesSold} {t('bottles')} · <b className="text-ink">{rupee(calc.salePaise)}</b>
+        </span>
+      </div>
+      {sold.length === 0 ? (
+        <p className="px-5 py-6 text-center text-sm text-ink-3">{t('nothingSold')}</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[480px] text-sm">
+            <thead className="bg-sunk text-[11px] uppercase tracking-wider text-ink-3">
+              <tr>
+                <th className="px-4 py-2 text-left sm:px-5">{t('brand')}</th>
+                <th className="px-2 py-2 text-left">{t('category')}</th>
+                <th className="px-2 py-2 text-right">{t('sold')}</th>
+                <th className="px-2 py-2 text-right">{t('mrp')}</th>
+                <th className="px-4 py-2 text-right sm:px-5">{t('amount')}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {sold.map((r) => (
+                <tr key={r.product.id}>
+                  <td className="px-4 py-2 sm:px-5">
+                    <span className="font-semibold">{r.product.name}</span> <span className="text-ink-2">{r.product.size}</span>
+                  </td>
+                  <td className="px-2 py-2 text-ink-2">{r.product.category}</td>
+                  <td className="num px-2 py-2 text-right font-bold">{r.sold}</td>
+                  <td className="num px-2 py-2 text-right text-ink-2">{rupee(r.row.mrpPaise, { symbol: false })}</td>
+                  <td className="num px-4 py-2 text-right font-semibold sm:px-5">{rupee(r.amountPaise)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="border-t-2 border-line bg-sunk/60 font-bold">
+              <tr>
+                <td className="px-4 py-2.5 sm:px-5" colSpan={2}>
+                  {t('total')}
+                </td>
+                <td className="num px-2 py-2.5 text-right">{calc.bottlesSold}</td>
+                <td />
+                <td className="num px-4 py-2.5 text-right sm:px-5">{rupee(calc.salePaise)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 border-t border-line px-4 py-3 text-sm sm:grid-cols-4 sm:px-5">
+        {[
+          [t('cashSale'), calc.cashSalePaise],
+          [t('online'), calc.onlinePaise],
+          [t('card'), calc.cardPaise],
+          [t('due'), calc.duePaise],
+        ].map(([l, v]) => (
+          <div key={l as string} className="flex justify-between gap-2 sm:block">
+            <span className="text-ink-2">{l as string}</span>{' '}
+            <b className="num sm:block">{rupee(v as number)}</b>
+          </div>
+        ))}
+      </div>
     </Card>
   );
 }

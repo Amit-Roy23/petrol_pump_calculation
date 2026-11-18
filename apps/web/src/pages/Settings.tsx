@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, Cloud, Flame, Wine, Database, Download, QrCode, LogOut, RefreshCw, Fuel, Languages, Plus, RotateCcw, Sparkles, Trash2, Upload, Warehouse } from 'lucide-react';
+import { Clock, Cloud, Flame, Wine, X, Database, Download, QrCode, LogOut, RefreshCw, Fuel, Languages, Plus, RotateCcw, Sparkles, Trash2, Upload, Warehouse } from 'lucide-react';
 import { RoundingMode } from '@petrolpump/shared';
 import { useStore } from '../lib/store';
 import { emptyData, sampleData } from '../lib/seed';
@@ -591,7 +591,7 @@ function WineSettingsCard() {
           </Link>
         }
       />
-      <Field label={t('wineShopName')}>
+      <Field label={t('wineShopName')} className="mb-4">
         <input
           className="input font-semibold"
           value={st.shopName}
@@ -602,6 +602,36 @@ function WineSettingsCard() {
           }
         />
       </Field>
+      <span className="label">{t('customCategories')}</span>
+      {st.customCategories?.length ? (
+        <div className="flex flex-wrap gap-1.5">
+          {st.customCategories.map((c) => {
+            const used = st.products.some((p) => p.category.toLowerCase() === c.toLowerCase());
+            return (
+              <span key={c} className="chip border border-line bg-sunk py-1 pl-3 pr-1 text-sm">
+                {c}
+                <button
+                  className="rounded p-0.5 text-ink-3 hover:bg-bad-soft hover:text-bad disabled:opacity-30"
+                  disabled={used}
+                  title={used ? t('inUse') : t('delete')}
+                  aria-label={`${t('delete')} ${c}`}
+                  onClick={() =>
+                    update((d) => {
+                      const ws = structuredClone(wineSettings(d));
+                      ws.customCategories = (ws.customCategories ?? []).filter((x) => x !== c);
+                      d.settings.wine = ws;
+                    })
+                  }
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="text-xs text-ink-3">{t('noCustomCategories')}</p>
+      )}
     </Card>
   );
 }

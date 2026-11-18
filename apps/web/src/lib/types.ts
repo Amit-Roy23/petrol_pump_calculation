@@ -269,6 +269,8 @@ export interface LpgDay {
 export interface WineProduct {
   id: string;
   name: string;
+  /** Name exactly as printed on the purchase / excise bill (optional). */
+  billName?: string;
   /** Bottle size shown next to the name, e.g. "750 ml", "650 ml". */
   size: string;
   /** Group for filtering: Whisky, Rum, Beer, Wine, Country … */
@@ -282,11 +284,18 @@ export interface WineProduct {
   /** Warn when closing stock falls to this many bottles or fewer (0 = off). */
   lowStock: number;
   active: boolean;
+  /**
+   * Deleted by the user. Kept only so past days with sales still add up;
+   * hidden everywhere else.
+   */
+  deleted?: boolean;
 }
 
 export interface WineSettings {
   shopName: string;
   products: WineProduct[];
+  /** Categories the shop added itself, on top of the built-in list. */
+  customCategories?: string[];
 }
 
 /**
@@ -300,9 +309,30 @@ export interface WineRow {
   closing: string;
 }
 
+/** One brand on a purchase invoice. */
+export interface WineInvoiceLine {
+  id: string;
+  productId: string;
+  /** Bottles received. */
+  qty: number;
+  /** Purchase price per bottle in paise. */
+  costPaise: number;
+}
+
+/** Stock received from a supplier on one purchase invoice / bill. */
+export interface WineInvoice {
+  id: string;
+  number: string;
+  supplier: string;
+  lines: WineInvoiceLine[];
+  note: string;
+}
+
 export interface WineDay {
   date: string;
   rows: Record<string, WineRow>; // productId → row
+  /** Purchase invoices received this day; their bottles add to stock. */
+  invoices?: WineInvoice[];
   online: Entry[];
   card: Entry[];
   /** Credit given: label = customer name. */
