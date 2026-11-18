@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   addShift,
+  customerHasHistory,
+  customerLedger,
+  editSheetDue,
+  liveCustomers,
   dayExpenseLines,
   computeDay,
   createDay,
@@ -512,5 +516,52 @@ describe('WhatsApp due reminders', () => {
 
   it('makes a click-to-chat link with the text encoded', () => {
     expect(waLink('919876543210', 'Hi ₹10 & thanks')).toBe('https://wa.me/919876543210?text=Hi%20%E2%82%B910%20%26%20thanks');
+  });
+});
+
+describe('dues CRUD', () => {
+  it('a due added by hand increases the balance and is not a payment', () => {
+    const data = sampleData();
+    const c = data.customers[0];
+    data.receipts.push({ id: 'cr', customerId: c.id, date: '2026-06-20', amountPaise: 50000, mode: 'credit', note: 'old due' });
+    const b = customerBalances(data).get(c.id)!;
+    expect(b.balancePaise).toBe(1145100 + 50000);
+    expect(b.receivedPaise).toBe(0);
+    // Day closing ignores it (it isn't cash or online money in).
+    const day = computeDay(data, data.days['2026-06-19']);
+    expect(day.receiptsCashPaise + day.receiptsOnlinePaise).toBe(0);
+    const line = customerLedger(data, c.id).find((l) => l.ref.type === 'receipt')!;
+    expect(line.kind).toBe('sale');
+  });
+
+  it('edits and deletes a due that was entered on the meter sheet', () => {
+    const data = sampleData();
+    const c = data.customers[0];
+    const line = customerLedger(data, c.id)[0];
+    expect(line.ref.type).toBe('sheet');
+    if (line.ref.type !== 'sheet') return;
+    expect(editSheetDue(data, line.ref, { amountPaise: 1000000, note: 'corrected' })).toBe(true);
+    expect(customerBalances(data).get(c.id)!.balancePaise).toBe(1000000);
+    // Machine 285 money follows the edit.
+    expect(computeDay(data, data.days['2026-06-19']).sheets[1].duePaise).toBe(1000000);
+    expect(editSheetDue(data, line.ref, null)).toBe(true);
+    expect(customerBalances(data).get(c.id)!.balancePaise).toBe(0);
+  });
+
+  it('will not edit a due on a locked day', () => {
+    const data = sampleData();
+    data.days['2026-06-19'].locked = true;
+    const line = customerLedger(data, data.customers[0].id)[0];
+    if (line.ref.type !== 'sheet') throw new Error('expected sheet ref');
+    expect(line.ref.locked).toBe(true);
+    expect(editSheetDue(data, line.ref, null)).toBe(false);
+  });
+
+  it('deleted customers are hidden but their history stays', () => {
+    const data = sampleData();
+    data.customers[0].deleted = true;
+    expect(liveCustomers(data)).toHaveLength(0);
+    expect(customerHasHistory(data, data.customers[0].id)).toBe(true);
+    expect(customerBalances(data).get(data.customers[0].id)!.balancePaise).toBe(1145100);
   });
 });
