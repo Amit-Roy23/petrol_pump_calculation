@@ -2,6 +2,7 @@ import { RoundingMode } from '@petrolpump/shared';
 import type { AppData, Machine, PaymentMethod, Settings, ShiftTemplate } from './types';
 import { uid } from './util';
 import { sampleLpg } from './lpg';
+import { sampleWine } from './wine';
 
 function machine(id: string, name: string, readings: string[] = ['', '', '', '']): Machine {
   return {
@@ -82,6 +83,8 @@ export function sampleData(current?: AppData): AppData {
   const date = '2026-06-19';
   const lpg = sampleLpg();
   settings.lpg = lpg.settings;
+  const wine = sampleWine();
+  settings.wine = wine.settings;
 
   return {
     version: 1,
@@ -89,6 +92,7 @@ export function sampleData(current?: AppData): AppData {
     customers: [{ id: customerId, name: 'Ghosh Transport', phone: '', vehicle: 'WB-11 truck', openingDuePaise: 0 }],
     receipts: [],
     lpgDays: lpg.days,
+    wineDays: wine.days,
     days: {
       [date]: {
         date,

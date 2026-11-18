@@ -101,6 +101,18 @@ describe('api', () => {
     expect((await call(data, { method: 'PUT', token, body: { lpgDays: [{ date: 'bad' }] } })).status).toBe(400);
   });
 
+    it('stores wine shop days separately', async () => {
+    const { token } = issueToken();
+    await call(data, { method: 'PUT', token, body: { wineDays: [{ date: '2026-11-18', rows: {} }] } });
+    let snap = await call(data, { token });
+    expect(Object.keys(snap.body.wineDays)).toEqual(['2026-11-18']);
+    expect(snap.body.lpgDays).toEqual({});
+    await call(data, { method: 'PUT', token, body: { deleteWineDays: ['2026-11-18'] } });
+    snap = await call(data, { token });
+    expect(snap.body.wineDays).toEqual({});
+    expect((await call(data, { method: 'PUT', token, body: { wineDays: [{ date: 'x' }] } })).status).toBe(400);
+  });
+
     it('validates the patch shape', async () => {
     const { token } = issueToken();
     const bad = [{ days: [{ date: '19/06/2026', sheets: {} }] }, { settings: { products: 'x' } }, { customers: [{ name: 'no id' }] }, { deleteDays: ['x'] }, []];

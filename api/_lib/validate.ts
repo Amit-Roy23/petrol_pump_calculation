@@ -38,5 +38,15 @@ export function parsePatch(body: unknown): { patch?: Patch; error?: string } {
     if (!Array.isArray(arr) || !arr.every((d) => typeof d === 'string' && DATE.test(d))) return { error: 'Invalid deleteLpgDays' };
     patch.deleteLpgDays = arr as string[];
   }
+  if (body.wineDays !== undefined) {
+    const arr = body.wineDays;
+    if (!Array.isArray(arr) || !arr.every((d) => isObj(d) && typeof d.date === 'string' && DATE.test(d.date))) return { error: 'Invalid wineDays' };
+    patch.wineDays = arr as Json[];
+  }
+  if (body.deleteWineDays !== undefined) {
+    const arr = body.deleteWineDays;
+    if (!Array.isArray(arr) || !arr.every((d) => typeof d === 'string' && DATE.test(d))) return { error: 'Invalid deleteWineDays' };
+    patch.deleteWineDays = arr as string[];
+  }
   return { patch };
 }
