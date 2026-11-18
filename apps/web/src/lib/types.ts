@@ -163,6 +163,8 @@ export interface Customer {
   openingDuePaise: number;
   /** When a WhatsApp due reminder was last sent (ISO time). */
   lastReminderAt?: string;
+  /** Deleted by the user but kept because it has history; can be restored. */
+  deleted?: boolean;
 }
 
 /** Details printed in WhatsApp due reminders. */
@@ -180,7 +182,8 @@ export interface DueReceipt {
   customerId: string;
   date: string;
   amountPaise: number;
-  mode: 'cash' | 'online';
+  /** cash / online = payment received; credit = due added by hand (not from a meter sheet). */
+  mode: 'cash' | 'online' | 'credit';
   note: string;
 }
 

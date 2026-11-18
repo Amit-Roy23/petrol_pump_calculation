@@ -696,8 +696,9 @@ function DueEditor({ dues, locked, onChange }: { dues: Entry[]; locked: boolean;
   const add = () => {
     const paise = parseAmountExpr(amount);
     if (!name.trim() || !paise || paise <= 0) return;
-    let customer = customers.find((c) => c.name.trim().toLowerCase() === name.trim().toLowerCase());
+    const customer = customers.find((c) => c.name.trim().toLowerCase() === name.trim().toLowerCase());
     let customerId = customer?.id;
+    if (customer?.deleted) update((d) => void (d.customers = d.customers.map((x) => (x.id === customer.id ? { ...x, deleted: false } : x))));
     if (!customerId) {
       customerId = uid();
       const id = customerId;
@@ -753,9 +754,11 @@ function DueEditor({ dues, locked, onChange }: { dues: Entry[]; locked: boolean;
         <div className="grid grid-cols-[1fr_120px] gap-2">
           <input className="input py-2" list="due-customers" placeholder={t('dueCustomer')} value={name} onChange={(e) => setName(e.target.value)} />
           <datalist id="due-customers">
-            {customers.map((c) => (
-              <option key={c.id} value={c.name} />
-            ))}
+            {customers
+              .filter((c) => !c.deleted)
+              .map((c) => (
+                <option key={c.id} value={c.name} />
+              ))}
           </datalist>
           <input className="input num py-2 text-right" inputMode="decimal" placeholder="₹ 0" value={amount} onChange={(e) => setAmount(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
           <input className="input py-2" placeholder={t('dueVehicle')} value={note} onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />

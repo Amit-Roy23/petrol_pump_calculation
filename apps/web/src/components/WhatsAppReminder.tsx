@@ -34,6 +34,9 @@ export function WhatsAppReminder({ customerIds, onClose }: { customerIds: string
   const customer = data.customers.find((c) => c.id === customerIds[idx]);
   const balance = useMemo(() => (customer ? customerBalances(data).get(customer.id)?.balancePaise ?? 0 : 0), [data, customer]);
   const digits = normalizePhone(phone);
+  const shopDigits = normalizePhone(reminderSettings(data).stationPhone);
+  const isOwnNumber = !!digits && digits === shopDigits;
+  const canSend = !!digits && !isOwnNumber && !!text.trim();
   const multi = customerIds.length > 1;
 
   // Fresh phone + message whenever we move to another customer or change language.
@@ -53,7 +56,7 @@ export function WhatsAppReminder({ customerIds, onClose }: { customerIds: string
   };
 
   const send = () => {
-    if (!digits) return;
+    if (!canSend || !digits) return;
     // Open first (browsers only allow pop-ups straight from the click).
     window.open(waLink(digits, text), '_blank', 'noopener');
     update((d) => {
@@ -104,8 +107,8 @@ export function WhatsAppReminder({ customerIds, onClose }: { customerIds: string
               <SkipForward className="h-4 w-4" /> {t('skip')}
             </button>
           )}
-          <button className={cn('btn', WA_GREEN)} disabled={!digits || !text.trim()} onClick={send}>
-            <MessageCircle className="h-4 w-4" /> {t('openWhatsApp')}
+          <button className={cn('btn', WA_GREEN)} disabled={!canSend} onClick={send}>
+            <MessageCircle className="h-4 w-4" /> {canSend ? t('openWhatsApp') : t('addNumberToSend')}
           </button>
         </>
       }
@@ -124,8 +127,15 @@ export function WhatsAppReminder({ customerIds, onClose }: { customerIds: string
         </div>
 
         <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
-          <Field label={t('whatsappNumber')} hint={digits ? `+${digits}` : phone.trim() ? t('phoneInvalid') : t('phoneNeeded')}>
-            <input className={cn('input num', phone.trim() && !digits && 'border-bad')} inputMode="tel" placeholder="98765 43210" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <Field label={t('whatsappNumber')} hint={digits ? (isOwnNumber ? t('ownNumberWarn') : `+${digits}`) : phone.trim() ? t('phoneInvalid') : t('phoneNeeded')}>
+            <input
+              className={cn('input num', ((phone.trim() && !digits) || isOwnNumber) && 'border-bad', !phone.trim() && 'border-warn ring-4 ring-warn/15')}
+              inputMode="tel"
+              placeholder={t('customerPhoneLabel')}
+              autoFocus={!customer.phone}
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
           </Field>
           <div>
             <span className="label">{t('messageLanguage')}</span>
@@ -137,6 +147,20 @@ export function WhatsAppReminder({ customerIds, onClose }: { customerIds: string
                 { value: 'bn', label: 'বাংলা' },
               ]}
             />
+          </div>
+        </div>
+
+        {!phone.trim() && <p className="rounded-xl bg-warn-soft px-3 py-2.5 text-sm font-semibold text-warn">⚠ {t('customerNoPhone')}</p>}
+
+        {/* Who it goes to and from – the shop number in Settings is only text in the message */}
+        <div className="grid gap-1 rounded-xl border border-line bg-sunk/60 px-3 py-2.5 text-sm sm:grid-cols-2">
+          <div>
+            <span className="text-ink-3">{t('sendTo')}: </span>
+            <b>{customer.name}</b> {digits && !isOwnNumber && <span className="num text-ink-2">+{digits}</span>}
+          </div>
+          <div>
+            <span className="text-ink-3">{t('sendFrom')}: </span>
+            <span className="text-ink-2">{t('fromThisDevice')}</span>
           </div>
         </div>
 

@@ -16,7 +16,10 @@ export default function Dashboard() {
   const tol = data.settings.tolerancePaise;
   const lang = data.settings.language;
 
-  const outstanding = useMemo(() => [...customerBalances(data).values()].reduce((a, b) => a + Math.max(0, b.balancePaise), 0), [data]);
+  const outstanding = useMemo(() => {
+    const live = new Set(data.customers.filter((c) => !c.deleted).map((c) => c.id));
+    return [...customerBalances(data).values()].filter((b) => live.has(b.customerId)).reduce((a, b) => a + Math.max(0, b.balancePaise), 0);
+  }, [data]);
 
   const week = useMemo(() => {
     const out: { date: string; sale: number; exists: boolean }[] = [];
@@ -136,7 +139,7 @@ export default function Dashboard() {
           accent="bg-ok"
           icon={<Fuel className="h-4 w-4" />}
         />
-        <Stat label={t('totalOutstanding')} value={rupee(outstanding)} sub={`${data.customers.length} ${t('duesTitle').toLowerCase()}`} accent="bg-warn" icon={<HandCoins className="h-4 w-4" />} />
+        <Stat label={t('totalOutstanding')} value={rupee(outstanding)} sub={`${data.customers.filter((c) => !c.deleted).length} ${t('duesTitle').toLowerCase()}`} accent="bg-warn" icon={<HandCoins className="h-4 w-4" />} />
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">

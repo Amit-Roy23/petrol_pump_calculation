@@ -15,6 +15,7 @@ import type {
   ShiftTemplate,
   Staff,
   Entry,
+  Customer,
 } from './types';
 import { isValidReading, sumPaise, uid } from './util';
 
@@ -593,29 +594,96 @@ export function customerBalances(data: AppData): Map<string, CustomerBalance> {
   for (const r of data.receipts) {
     const b = map.get(r.customerId);
     if (!b) continue;
-    b.receivedPaise += r.amountPaise;
-    b.balancePaise -= r.amountPaise;
+    if (r.mode === 'credit') {
+      // Due added by hand: increases what the customer owes.
+      b.salesPaise += r.amountPaise;
+      b.balancePaise += r.amountPaise;
+    } else {
+      b.receivedPaise += r.amountPaise;
+      b.balancePaise -= r.amountPaise;
+    }
     if (!b.lastDate || r.date > b.lastDate) b.lastDate = r.date;
   }
   return map;
 }
 
-export type LedgerLine = { date: string; kind: 'sale' | 'receipt'; amountPaise: number; note: string; machine?: string };
+/** Where a ledger line lives, so it can be edited or deleted. */
+export type LedgerRef =
+  | { type: 'sheet'; date: string; machineId: string; shiftId: string; entryId: string; locked: boolean }
+  | { type: 'receipt'; id: string };
+
+export type LedgerLine = {
+  date: string;
+  kind: 'sale' | 'receipt';
+  amountPaise: number;
+  note: string;
+  machine?: string;
+  /** cash / online for payments, credit for a due added by hand. */
+  mode?: 'cash' | 'online' | 'credit';
+  ref: LedgerRef;
+};
 
 export function customerLedger(data: AppData, customerId: string): LedgerLine[] {
   const lines: LedgerLine[] = [];
   for (const day of Object.values(data.days)) {
     for (const sheet of Object.values(day.sheets)) {
       const machine = data.settings.machines.find((m) => m.id === sheet.machineId)?.name;
-      for (const d of getShifts(sheet).flatMap((sh) => sh.dues)) {
-        if (d.customerId === customerId) lines.push({ date: day.date, kind: 'sale', amountPaise: d.amountPaise, note: d.note ?? '', machine });
+      for (const sh of getShifts(sheet)) {
+        for (const d of sh.dues) {
+          if (d.customerId !== customerId) continue;
+          lines.push({
+            date: day.date,
+            kind: 'sale',
+            amountPaise: d.amountPaise,
+            note: d.note ?? '',
+            machine,
+            ref: { type: 'sheet', date: day.date, machineId: sheet.machineId, shiftId: sh.id, entryId: d.id, locked: day.locked },
+          });
+        }
       }
     }
   }
   for (const r of data.receipts) {
-    if (r.customerId === customerId) lines.push({ date: r.date, kind: 'receipt', amountPaise: r.amountPaise, note: r.note || r.mode });
+    if (r.customerId !== customerId) continue;
+    lines.push({
+      date: r.date,
+      kind: r.mode === 'credit' ? 'sale' : 'receipt',
+      amountPaise: r.amountPaise,
+      note: r.note,
+      mode: r.mode,
+      ref: { type: 'receipt', id: r.id },
+    });
   }
   return lines.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Customers shown in lists (deleted ones hidden). */
+export function liveCustomers(data: AppData): Customer[] {
+  return data.customers.filter((c) => !c.deleted);
+}
+
+/** Has the customer any dues or payments recorded? */
+export function customerHasHistory(data: AppData, customerId: string): boolean {
+  return customerLedger(data, customerId).length > 0;
+}
+
+/**
+ * Edits a due entry made on a meter sheet. Mutates the draft; returns false
+ * if the day is locked or the entry can't be found.
+ */
+export function editSheetDue(draft: AppData, ref: Extract<LedgerRef, { type: 'sheet' }>, patch: { amountPaise?: number; note?: string } | null): boolean {
+  const day = draft.days[ref.date];
+  if (!day || day.locked) return false;
+  const sheet = day.sheets[ref.machineId];
+  if (!sheet) return false;
+  const shifts = ensureShifts(sheet);
+  const sh = shifts.find((x) => x.id === ref.shiftId) ?? shifts[0];
+  const i = sh.dues.findIndex((d) => d.id === ref.entryId);
+  if (i < 0) return false;
+  if (patch === null) sh.dues.splice(i, 1);
+  else sh.dues[i] = { ...sh.dues[i], ...patch };
+  day.updatedAt = new Date().toISOString();
+  return true;
 }
 
 /* ---------------- expenses ---------------- */
